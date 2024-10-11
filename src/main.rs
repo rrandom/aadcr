@@ -1,7 +1,6 @@
 #![allow(clippy::print_stdout)]
 mod unpacker;
 
-
 use std::{env, path::Path};
 
 use oxc_allocator::Allocator;
