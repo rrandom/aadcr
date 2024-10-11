@@ -4,18 +4,18 @@ mod unpacker;
 use std::{env, path::Path};
 
 use oxc_allocator::Allocator;
-use oxc_codegen::CodeGenerator;
+// use oxc_codegen::CodeGenerator;
 use oxc_parser::Parser;
 use oxc_semantic::SemanticBuilder;
 use oxc_span::SourceType;
-use oxc_transformer::{EnvOptions, Targets, TransformOptions, Transformer};
+// use oxc_transformer::{EnvOptions, Targets, TransformOptions, Transformer};
 use pico_args::Arguments;
 
 use unpacker::get_modules_form_webpack4;
 
 fn main() {
     let mut args = Arguments::from_env();
-    let name = env::args().nth(1).unwrap_or_else(|| "test1.js".to_string());
+    let name = env::args().nth(1).unwrap_or_else(|| "test.js".to_string());
     let targets: Option<String> = args.opt_value_from_str("--targets").unwrap_or(None);
 
     let path = Path::new(&name);
@@ -36,7 +36,7 @@ fn main() {
     println!("Original:\n");
     // println!("{source_text}\n");
 
-    let mut program = ret.program;
+    let program = ret.program;
     let trivias = ret.trivias;
 
     let ret = SemanticBuilder::new(&source_text)
