@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+oxc_ast = { version = "0.31.0" }
 oxc_codegen = { version = "0.31.0" }
 oxc_parser = { version = "0.31.0" }
 oxc_semantic = { version = "0.31.0" }

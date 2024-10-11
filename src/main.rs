@@ -1,4 +1,7 @@
 #![allow(clippy::print_stdout)]
+mod unpacker;
+
+
 use std::{env, path::Path};
 
 use oxc_allocator::Allocator;
@@ -9,9 +12,11 @@ use oxc_span::SourceType;
 use oxc_transformer::{EnvOptions, Targets, TransformOptions, Transformer};
 use pico_args::Arguments;
 
+use unpacker::get_modules_form_webpack4;
+
 fn main() {
     let mut args = Arguments::from_env();
-    let name = env::args().nth(1).unwrap_or_else(|| "test.js".to_string());
+    let name = env::args().nth(1).unwrap_or_else(|| "test1.js".to_string());
     let targets: Option<String> = args.opt_value_from_str("--targets").unwrap_or(None);
 
     let path = Path::new(&name);
@@ -30,7 +35,7 @@ fn main() {
     }
 
     println!("Original:\n");
-    println!("{source_text}\n");
+    // println!("{source_text}\n");
 
     let mut program = ret.program;
     let trivias = ret.trivias;
@@ -48,30 +53,32 @@ fn main() {
         }
     }
 
-    let (symbols, scopes) = ret.semantic.into_symbol_table_and_scope_tree();
+    get_modules_form_webpack4(&ret.semantic);
 
-    let transform_options = if let Some(targets) = &targets {
-        TransformOptions::from_preset_env(&EnvOptions {
-            targets: Targets::from_query(targets),
-            ..EnvOptions::default()
-        })
-        .unwrap()
-    } else {
-        TransformOptions::enable_all()
-    };
+    // let (symbols, scopes) = ret.semantic.into_symbol_table_and_scope_tree();
 
-    let ret = Transformer::new(&allocator, path, &source_text, trivias.clone(), transform_options)
-        .build_with_symbols_and_scopes(symbols, scopes, &mut program);
+    // let transform_options = if let Some(targets) = &targets {
+    //     TransformOptions::from_preset_env(&EnvOptions {
+    //         targets: Targets::from_query(targets),
+    //         ..EnvOptions::default()
+    //     })
+    //     .unwrap()
+    // } else {
+    //     TransformOptions::enable_all()
+    // };
 
-    if !ret.errors.is_empty() {
-        println!("Transformer Errors:");
-        for error in ret.errors {
-            let error = error.with_source_code(source_text.clone());
-            println!("{error:?}");
-        }
-    }
+    // let ret = Transformer::new(&allocator, path, &source_text, trivias.clone(), transform_options)
+    //     .build_with_symbols_and_scopes(symbols, scopes, &mut program);
 
-    let printed = CodeGenerator::new().build(&program).code;
-    println!("Transformed:\n");
-    println!("{printed}");
+    // if !ret.errors.is_empty() {
+    //     println!("Transformer Errors:");
+    //     for error in ret.errors {
+    //         let error = error.with_source_code(source_text.clone());
+    //         println!("{error:?}");
+    //     }
+    // }
+
+    // let printed = CodeGenerator::new().build(&program).code;
+    // println!("Transformed:\n");
+    // println!("{printed}");
 }
