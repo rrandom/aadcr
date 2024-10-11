@@ -9,11 +9,6 @@ use oxc_span::SourceType;
 use oxc_transformer::{EnvOptions, Targets, TransformOptions, Transformer};
 use pico_args::Arguments;
 
-// Instruction:
-// create a `test.tsx`,
-// run `cargo run -p oxc_transformer --example transformer`
-// or `just watch "run -p oxc_transformer --example transformer"`
-
 fn main() {
     let mut args = Arguments::from_env();
     let name = env::args().nth(1).unwrap_or_else(|| "test.js".to_string());
