@@ -8,7 +8,9 @@ use oxc_semantic::{NodeId, Semantic};
 pub struct Module {}
 
 pub fn get_modules_form_webpack4(semantic: &Semantic) -> Option<Module> {
-    let mut entry_id = NodeId::DUMMY;
+    let mut factory_id = NodeId::DUMMY;
+    let mut entry_ids = Vec::new();
+
     for node in semantic.nodes().iter() {
         match node.kind() {
             AstKind::CallExpression(call) => {
@@ -23,7 +25,7 @@ pub fn get_modules_form_webpack4(semantic: &Semantic) -> Option<Module> {
                             .all(|d| matches!(d, ArrayExpressionElement::FunctionExpression(_)));
                         if all_is_fun {
                             println!("Found? {:?}", node.id());
-                            entry_id = node.id();
+                            factory_id = node.id();
                             // let span =  node.kind().as_call_expression().unwrap().span;
                         }
                     }
@@ -38,7 +40,7 @@ pub fn get_modules_form_webpack4(semantic: &Semantic) -> Option<Module> {
                 let contains = semantic
                     .nodes()
                     .ancestors(node.id())
-                    .any(|id| id == entry_id);
+                    .any(|id| id == factory_id);
                 if !contains {
                   continue;
                 }
@@ -52,6 +54,7 @@ pub fn get_modules_form_webpack4(semantic: &Semantic) -> Option<Module> {
                             span.source_text(semantic.source_text()),
                             s.value
                         );
+                        entry_ids.push(s.value);
                     }
                 }
             }
