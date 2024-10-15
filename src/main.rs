@@ -1,6 +1,7 @@
 #![allow(clippy::print_stdout)]
 mod unpacker;
 
+use core::alloc;
 use std::{env, path::Path};
 
 use oxc_allocator::Allocator;
@@ -15,7 +16,7 @@ use unpacker::get_modules_form_webpack4;
 
 fn main() {
     let mut args = Arguments::from_env();
-    let name = env::args().nth(1).unwrap_or_else(|| "test.js".to_string());
+    let name = env::args().nth(1).unwrap_or_else(|| "test1.js".to_string());
     let targets: Option<String> = args.opt_value_from_str("--targets").unwrap_or(None);
 
     let path = Path::new(&name);
@@ -52,7 +53,7 @@ fn main() {
         }
     }
 
-    get_modules_form_webpack4(&ret.semantic);
+    get_modules_form_webpack4(&allocator, &ret.semantic);
 
     // let (symbols, scopes) = ret.semantic.into_symbol_table_and_scope_tree();
 
