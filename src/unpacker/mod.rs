@@ -7,6 +7,7 @@ use oxc_ast::{
     },
     AstKind,
 };
+use oxc_codegen::CodeGenerator;
 use oxc_semantic::{NodeId, Semantic};
 pub struct Module {}
 
@@ -98,7 +99,8 @@ pub fn get_modules_form_webpack4(allocator: &Allocator, semantic: &Semantic) -> 
                         fun.statements.clone_in(&allocator),
                     );
 
-                    println!("program ===>: {:?}", program);
+                    let printed = CodeGenerator::new().build(&program).code;
+                    println!("program ===>: {:?}", printed);
                 }
             }
         }
