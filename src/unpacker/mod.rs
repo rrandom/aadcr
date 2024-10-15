@@ -1,4 +1,4 @@
-use oxc_allocator::Allocator;
+use oxc_allocator::{Allocator, Vec};
 use oxc_allocator::{Box, CloneIn};
 use oxc_ast::{
     ast::{
@@ -8,18 +8,26 @@ use oxc_ast::{
     AstKind,
 };
 use oxc_codegen::CodeGenerator;
-use oxc_semantic::{NodeId, Semantic};
+use oxc_semantic::{NodeId, Semantic, SymbolId};
+
 pub struct Module {}
 
 pub fn get_modules_form_webpack4(allocator: &Allocator, semantic: &Semantic) -> Option<Module> {
     let mut factory_id = NodeId::DUMMY;
-    let mut entry_ids = Vec::new();
+    let mut entry_ids = Vec::new_in(&allocator);
     let mut arr_expr = None;
     let mut program_source_type = None;
     let mut program_directives = None;
 
+    let symbol_table = semantic.cfg();
+
+    println!("semantic: \n{:#?}", symbol_table);
+
+    println!("===");
+
     for node in semantic.nodes().iter() {
         match node.kind() {
+            // TO-DO: using `.root` should work too
             AstKind::Program(Program {
                 source_type,
                 directives,
@@ -91,10 +99,17 @@ pub fn get_modules_form_webpack4(allocator: &Allocator, semantic: &Semantic) -> 
                     // let directives = fun.directives;
                     // let statements = fun.statements;
 
+                    let mut directives = fun.directives.clone_in(&allocator);
+                    if let Some(d) = program_directives {
+                        let mut p = d.clone_in(&allocator);
+                        directives.append(&mut p);
+                    }
+
                     let program = Program::new(
                         fun.span.clone_in(&allocator),
                         program_source_type.unwrap().clone_in(&allocator),
-                        fun.directives.clone_in(&allocator),
+                        // fun.directives.clone_in(&allocator),
+                        directives,
                         None,
                         fun.statements.clone_in(&allocator),
                     );
