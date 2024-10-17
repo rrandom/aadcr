@@ -13,6 +13,7 @@ dependencies = [
  "oxc_semantic",
  "oxc_span",
  "oxc_transformer",
+ "oxc_traverse",
  "pico-args",
 ]
 

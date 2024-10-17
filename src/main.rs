@@ -37,8 +37,8 @@ fn main() {
     // println!("Original:\n");
     // println!("{source_text}\n");
 
-    let program = ret.program;
-    let trivias = ret.trivias;
+    let mut program = ret.program;
+    // let trivias = ret.trivias;
 
     let ret = SemanticBuilder::new(&source_text)
         // Estimate transformer will triple scopes, symbols, references
@@ -54,7 +54,7 @@ fn main() {
         }
     }
 
-    get_modules_form_webpack4(&allocator, &program);
+    get_modules_form_webpack4(&allocator, &mut program);
 
     // let (symbols, scopes) = ret.semantic.into_symbol_table_and_scope_tree();
 

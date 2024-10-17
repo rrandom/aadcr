@@ -8,11 +8,15 @@ use oxc_ast::{
     AstKind,
 };
 use oxc_codegen::CodeGenerator;
-use oxc_semantic::{NodeId, Semantic, SemanticBuilder, SymbolId, SymbolTable};
+use oxc_semantic::{NodeId, ScopeId, ScopeTree, Semantic, SemanticBuilder, SymbolId, SymbolTable};
+use oxc_traverse::{Traverse, TraverseCtx};
 
 pub struct Module {}
 
-pub fn get_modules_form_webpack4(allocator: &Allocator, program: &Program) -> Option<Module> {
+pub fn get_modules_form_webpack4_deprecated(
+    allocator: &Allocator,
+    program: &Program,
+) -> Option<Module> {
     let semantic = SemanticBuilder::new("").build(program).semantic;
 
     let mut factory_id = NodeId::DUMMY;
@@ -140,5 +144,70 @@ pub fn get_modules_form_webpack4(allocator: &Allocator, program: &Program) -> Op
             }
         }
         None
+    }
+}
+
+pub fn get_modules_form_webpack4<'a>(
+    allocator: &'a Allocator,
+    program: &mut Program<'a>,
+) -> Option<Module> {
+    WebPack4::new(allocator).build(program);
+    None
+}
+struct WebPack4<'a> {
+    is_webpack_4: bool,
+    allocator: &'a Allocator,
+}
+
+impl<'a> WebPack4<'a> {
+    pub fn new(allocator: &'a Allocator) -> Self {
+        Self {
+            allocator,
+            is_webpack_4: false,
+        }
+    }
+
+    pub fn build(self, program: &mut Program<'a>) {
+        let (symbols, scopes) = SemanticBuilder::new("")
+            .build(program)
+            .semantic
+            .into_symbol_table_and_scope_tree();
+        self.build_with_symbols_and_scopes(symbols, scopes, program);
+    }
+
+    pub fn build_with_symbols_and_scopes(
+        self,
+        symbols: SymbolTable,
+        scopes: ScopeTree,
+        program: &mut Program<'a>,
+    ) {
+        let mut ctx = TraverseCtx::new(scopes, symbols, self.allocator);
+
+        let mut factory = WebpackFourFactory::new();
+        factory.build(program, &mut ctx);
+    }
+}
+
+struct WebpackFourFactory {
+    found: bool,
+    scope_id: Option<ScopeId>,
+}
+
+impl<'a> WebpackFourFactory {
+    pub fn new() -> Self {
+        Self {
+            found: false,
+            scope_id: None,
+        }
+    }
+
+    fn build(&mut self, program: &mut Program<'a>, ctx: &mut TraverseCtx<'a>) {
+        oxc_traverse::walk_program(self, program, ctx);
+    }
+}
+
+impl<'a> Traverse<'a> for WebpackFourFactory {
+    fn enter_program(&mut self, node: &mut Program<'a>, ctx: &mut TraverseCtx<'a>) {
+        
     }
 }
