@@ -1,5 +1,6 @@
 use oxc_allocator::{Allocator, Vec};
 use oxc_allocator::{Box, CloneIn};
+use oxc_ast::ast::UnaryExpression;
 use oxc_ast::{
     ast::{
         ArrayExpressionElement, AssignmentExpression, Directive, Expression, FormalParameter,
@@ -9,7 +10,8 @@ use oxc_ast::{
 };
 use oxc_codegen::CodeGenerator;
 use oxc_semantic::{NodeId, ScopeId, ScopeTree, Semantic, SemanticBuilder, SymbolId, SymbolTable};
-use oxc_traverse::{Traverse, TraverseCtx};
+use oxc_span::SourceType;
+use oxc_traverse::{Ancestor, Traverse, TraverseCtx};
 
 pub struct Module {}
 
@@ -185,12 +187,14 @@ impl<'a> WebPack4<'a> {
 
         let mut factory = WebpackFourFactory::new();
         factory.build(program, &mut ctx);
+        println!("Found: {}", factory.found);
     }
 }
 
 struct WebpackFourFactory {
     found: bool,
     scope_id: Option<ScopeId>,
+    program_source_type: Option<SourceType>,
 }
 
 impl<'a> WebpackFourFactory {
@@ -198,6 +202,7 @@ impl<'a> WebpackFourFactory {
         Self {
             found: false,
             scope_id: None,
+            program_source_type: None,
         }
     }
 
@@ -207,7 +212,24 @@ impl<'a> WebpackFourFactory {
 }
 
 impl<'a> Traverse<'a> for WebpackFourFactory {
-    fn enter_program(&mut self, node: &mut Program<'a>, ctx: &mut TraverseCtx<'a>) {
-        
+    fn enter_program(&mut self, program: &mut Program<'a>, ctx: &mut TraverseCtx<'a>) {
+        println!("enter program");
+        self.program_source_type = Some(program.source_type);
+        let program_directives = Some(&program.directives);
+    }
+    fn exit_program(&mut self, program: &mut Program<'a>, ctx: &mut TraverseCtx<'a>) {
+        println!("exit program");
+    }
+
+    fn enter_call_expression(&mut self, call_expr: &mut oxc_ast::ast::CallExpression<'a>, ctx: &mut TraverseCtx<'a>) {
+        if call_expr.arguments.len() == 1 {
+            if let Some(Expression::ArrayExpression(args)) = call_expr.arguments[0].as_expression() {
+                let all_is_fun = args.elements.iter().all(|arg | matches!(arg, ArrayExpressionElement::FunctionExpression(_)));
+                if all_is_fun {
+                    self.found = true;
+                    println!("{:?}", ctx.current_scope_id());
+                }
+            }
+        }
     }
 }
