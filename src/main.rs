@@ -34,7 +34,7 @@ fn main() {
         }
     }
 
-    println!("Original:\n");
+    // println!("Original:\n");
     // println!("{source_text}\n");
 
     let program = ret.program;
@@ -54,7 +54,7 @@ fn main() {
         }
     }
 
-    get_modules_form_webpack4(&allocator, &ret.semantic);
+    get_modules_form_webpack4(&allocator, &program);
 
     // let (symbols, scopes) = ret.semantic.into_symbol_table_and_scope_tree();
 
