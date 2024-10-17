@@ -221,15 +221,39 @@ impl<'a> Traverse<'a> for WebpackFourFactory {
         println!("exit program");
     }
 
-    fn enter_call_expression(&mut self, call_expr: &mut oxc_ast::ast::CallExpression<'a>, ctx: &mut TraverseCtx<'a>) {
+    fn enter_call_expression(
+        &mut self,
+        call_expr: &mut oxc_ast::ast::CallExpression<'a>,
+        ctx: &mut TraverseCtx<'a>,
+    ) {
         if call_expr.arguments.len() == 1 {
-            if let Some(Expression::ArrayExpression(args)) = call_expr.arguments[0].as_expression() {
-                let all_is_fun = args.elements.iter().all(|arg | matches!(arg, ArrayExpressionElement::FunctionExpression(_)));
+            if let Some(Expression::ArrayExpression(args)) = call_expr.arguments[0].as_expression()
+            {
+                let all_is_fun = args
+                    .elements
+                    .iter()
+                    .all(|arg| matches!(arg, ArrayExpressionElement::FunctionExpression(_)));
                 if all_is_fun {
                     self.found = true;
                     println!("{:?}", ctx.current_scope_id());
                 }
             }
         }
+    }
+
+    fn enter_function(&mut self, fun: &mut oxc_ast::ast::Function<'a>, ctx: &mut TraverseCtx<'a>) {
+        let ns: std::vec::Vec<_> = fun
+            .params
+            .items
+            .iter()
+            .map(|it| it.pattern.get_identifier())
+            .collect();
+        println!(
+            "in Function, found: {} with scopeId {:?} and parent {:?} with parameter {:?}",
+            self.found,
+            ctx.current_scope_id(),
+            ctx.scopes().get_parent_id(ctx.current_scope_id()),
+            ns
+        );
     }
 }
