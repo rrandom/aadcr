@@ -1,6 +1,6 @@
 use oxc_allocator::{Allocator, Vec};
 use oxc_allocator::{Box, CloneIn};
-use oxc_ast::ast::UnaryExpression;
+use oxc_ast::ast::{AssignmentTarget, StaticMemberExpression, UnaryExpression};
 use oxc_ast::{
     ast::{
         ArrayExpressionElement, AssignmentExpression, Directive, Expression, FormalParameter,
@@ -187,21 +187,19 @@ impl<'a> WebPack4<'a> {
 
         let mut factory = WebpackFourFactory::new();
         factory.build(program, &mut ctx);
-        println!("Found: {}", factory.found);
+        println!("Found: {}", factory.found_scope_id.is_some());
     }
 }
 
 struct WebpackFourFactory {
-    found: bool,
-    scope_id: Option<ScopeId>,
+    found_scope_id: Option<ScopeId>,
     program_source_type: Option<SourceType>,
 }
 
 impl<'a> WebpackFourFactory {
     pub fn new() -> Self {
         Self {
-            found: false,
-            scope_id: None,
+            found_scope_id: None,
             program_source_type: None,
         }
     }
@@ -215,8 +213,9 @@ impl<'a> Traverse<'a> for WebpackFourFactory {
     fn enter_program(&mut self, program: &mut Program<'a>, ctx: &mut TraverseCtx<'a>) {
         println!("enter program");
         self.program_source_type = Some(program.source_type);
-        let program_directives = Some(&program.directives);
+        let _program_directives = Some(&program.directives);
     }
+
     fn exit_program(&mut self, program: &mut Program<'a>, ctx: &mut TraverseCtx<'a>) {
         println!("exit program");
     }
@@ -234,10 +233,43 @@ impl<'a> Traverse<'a> for WebpackFourFactory {
                     .iter()
                     .all(|arg| matches!(arg, ArrayExpressionElement::FunctionExpression(_)));
                 if all_is_fun {
-                    self.found = true;
+                    self.found_scope_id = Some(ctx.current_scope_id());
                     println!("{:?}", ctx.current_scope_id());
                 }
             }
+        }
+    }
+
+    fn enter_assignment_expression(
+        &mut self,
+        assign_expr: &mut AssignmentExpression<'a>,
+        ctx: &mut TraverseCtx<'a>,
+    ) {
+        match (self.found_scope_id, assign_expr) {
+            (
+                Some(factory_scope_id),
+                AssignmentExpression {
+                    left: AssignmentTarget::StaticMemberExpression(mem),
+                    right: Expression::NumericLiteral(val),
+                    ..
+                },
+            ) => {
+                if mem.object.is_identifier_reference()
+                    && mem.property.name.as_str() == "s"
+                    && ctx.ancestor_scopes().any(|id| id == factory_scope_id)
+                {
+                    println!(
+                        "{:?}, {}, {:?}, {:?}\n {:?}, {:?}",
+                        mem,
+                        val.value,
+                        ctx.current_scope_id(),
+                        ctx.scopes().get_bindings(ctx.current_scope_id()),
+                        ctx.scopes().get_bindings(self.found_scope_id.unwrap()),
+                        ctx.ancestor_scopes().collect::<std::vec::Vec<_>>()
+                    );
+                }
+            }
+            _ => {}
         }
     }
 
@@ -249,8 +281,8 @@ impl<'a> Traverse<'a> for WebpackFourFactory {
             .map(|it| it.pattern.get_identifier())
             .collect();
         println!(
-            "in Function, found: {} with scopeId {:?} and parent {:?} with parameter {:?}",
-            self.found,
+            "in Function, found: {:?} with scopeId {:?} and parent {:?} with parameter {:?}",
+            self.found_scope_id,
             ctx.current_scope_id(),
             ctx.scopes().get_parent_id(ctx.current_scope_id()),
             ns
