@@ -1,3 +1,4 @@
+use std::any::Any;
 use std::borrow::BorrowMut;
 use std::cell::RefCell;
 use std::vec;
@@ -30,10 +31,15 @@ pub fn get_modules_form_webpack4_deprecated(
     let semantic = SemanticBuilder::new("").build(program).semantic;
 
     let mut factory_id = NodeId::DUMMY;
+    let mut arg_id = NodeId::DUMMY;
+    let mut ae_id = NodeId::DUMMY;
+
     let mut entry_ids = Vec::new_in(&allocator);
     let mut arr_expr = None;
     let mut program_source_type = None;
     let mut program_directives = None;
+
+    let mut module_fun_ids = vec![];
 
     // println!("===");
 
@@ -49,7 +55,6 @@ pub fn get_modules_form_webpack4_deprecated(
                 program_directives = Some(directives);
             }
             AstKind::CallExpression(call) => {
-                // println!("found Call {:?}", node.id());
                 if call.arguments.len() == 1 {
                     if let Expression::ArrayExpression(arr) =
                         call.arguments[0].as_expression().unwrap()
@@ -94,9 +99,54 @@ pub fn get_modules_form_webpack4_deprecated(
                     }
                 }
             }
+            AstKind::Argument(_) => {
+                if let Some(id) =  semantic.nodes().parent_id(node.id()){
+                    if id == factory_id {
+                      arg_id = node.id();
+                    }
+                }
+            }
+            AstKind::ArrayExpression(_) => {
+                if let Some(id) =  semantic.nodes().parent_id(node.id()){
+                    if id == arg_id {
+                       ae_id = node.id();
+                    }
+                }
+            }
+            AstKind::Function(fun) => {
+                println!(
+                    "Enter Function: {:?}, parent: {:?} with",
+                    node.id(),
+                    semantic.nodes().parent_id(node.id()),
+                    // semantic.nodes().get_node(semantic.nodes().parent_id(node.id()).unwrap
+                );
+
+                let mut rec  = node.id();
+                for _ in 0..3 {
+                    let ancestor_id = semantic.nodes().parent_id(rec);
+                    if ancestor_id.is_none() {
+                        break;
+                    } else {
+                        rec = ancestor_id.unwrap();
+                    }
+                    println!("aa: {:?}", ancestor_id);
+                }
+                if ae_id == rec {
+                    println!("Got!");
+                    module_fun_ids.push(node.id());
+                }
+            }
             _ => {}
         }
     }
+
+    println!("ard_id: {:?}, ae_id: {:?}, module_fun_ids: {:?}", arg_id, ae_id, module_fun_ids);
+    // println!("n274: {:?}", n274);
+    // println!("n275: {:?}", n275);
+
+    // let n = semantic.nodes().get_node(NodeId::new(288));
+
+    // println!("=={:?}", n);
 
     if factory_id == NodeId::DUMMY {
         None
