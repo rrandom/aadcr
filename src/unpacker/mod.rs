@@ -185,18 +185,18 @@ impl<'a> WebPack4<'a> {
     ) {
         let mut ctx = TraverseCtx::new(scopes, symbols, self.allocator);
 
-        let mut factory = WebpackFourFactory::new();
-        factory.build(program, &mut ctx);
-        println!("Found: {}", factory.found_scope_id.is_some());
+        let mut webpack4 = Webpack4Impl::new();
+        webpack4.build(program, &mut ctx);
+        println!("Found: {}", webpack4.found_scope_id.is_some());
     }
 }
 
-struct WebpackFourFactory {
+struct Webpack4Impl {
     found_scope_id: Option<ScopeId>,
     program_source_type: Option<SourceType>,
 }
 
-impl<'a> WebpackFourFactory {
+impl<'a> Webpack4Impl {
     pub fn new() -> Self {
         Self {
             found_scope_id: None,
@@ -209,7 +209,7 @@ impl<'a> WebpackFourFactory {
     }
 }
 
-impl<'a> Traverse<'a> for WebpackFourFactory {
+impl<'a> Traverse<'a> for Webpack4Impl {
     fn enter_program(&mut self, program: &mut Program<'a>, ctx: &mut TraverseCtx<'a>) {
         println!("enter program");
         self.program_source_type = Some(program.source_type);
