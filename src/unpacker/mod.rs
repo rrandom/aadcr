@@ -1,3 +1,5 @@
+use std::cell::RefCell;
+
 use oxc_allocator::{Allocator, Vec};
 use oxc_allocator::{Box, CloneIn};
 use oxc_ast::ast::{AssignmentTarget, StaticMemberExpression, UnaryExpression};
@@ -157,9 +159,24 @@ pub fn get_modules_form_webpack4<'a>(
     WebPack4::new(allocator, source_text).build(program);
     None
 }
+#[derive(Debug)]
+struct ModuleIds {
+    ids: RefCell<std::vec::Vec<usize>>
+}
+
+impl ModuleIds {
+    pub fn new() -> Self {
+        Self { ids: RefCell::new(vec![]) }
+    }
+
+    pub fn insert_id(&self, stmt: usize) {
+        self.ids.borrow_mut().push(stmt);
+    }
+}
 
 struct Webpack4Ctx<'a> {
     pub source_text: &'a str,
+    pub module_ids: ModuleIds,
 }
 
 impl <'a> Webpack4Ctx<'a> {
@@ -167,7 +184,8 @@ impl <'a> Webpack4Ctx<'a> {
         source_text: &'a str,
     ) -> Self {
         Self {
-            source_text
+            source_text,
+            module_ids: ModuleIds::new(),
         }
     }
 }
@@ -205,6 +223,7 @@ impl<'a> WebPack4<'a> {
         let mut webpack4 = Webpack4Impl::new(&self.ctx);
         webpack4.build(program, &mut ctx);
         println!("Found: {}", webpack4.found_scope_id.is_some());
+        println!("ctx: {:?}", &self.ctx.module_ids);
     }
 }
 
@@ -277,6 +296,7 @@ impl<'a, 'ctx> Traverse<'a> for Webpack4Impl<'a, 'ctx> {
                     && mem.property.name.as_str() == "s"
                     && ctx.ancestor_scopes().any(|id| id == factory_scope_id)
                 {
+                    self.ctx.module_ids.insert_id(val.value as usize);
                     println!(
                         "{:?}, {}, {:?}, {:?}\n {:?}, {:?}",
                         mem,
