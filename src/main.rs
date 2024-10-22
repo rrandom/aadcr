@@ -54,7 +54,7 @@ fn main() {
         }
     }
 
-    get_modules_form_webpack4(&allocator, &mut program);
+    get_modules_form_webpack4(&allocator, &mut program, &source_text);
 
     // let (symbols, scopes) = ret.semantic.into_symbol_table_and_scope_tree();
 

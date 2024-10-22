@@ -152,24 +152,41 @@ pub fn get_modules_form_webpack4_deprecated(
 pub fn get_modules_form_webpack4<'a>(
     allocator: &'a Allocator,
     program: &mut Program<'a>,
+    source_text: &'a str,
 ) -> Option<Module> {
-    WebPack4::new(allocator).build(program);
+    WebPack4::new(allocator, source_text).build(program);
     None
 }
+
+struct Webpack4Ctx<'a> {
+    pub source_text: &'a str,
+}
+
+impl <'a> Webpack4Ctx<'a> {
+    pub fn new(
+        source_text: &'a str,
+    ) -> Self {
+        Self {
+            source_text
+        }
+    }
+}
 struct WebPack4<'a> {
-    is_webpack_4: bool,
+    ctx: Webpack4Ctx<'a>,
     allocator: &'a Allocator,
 }
 
 impl<'a> WebPack4<'a> {
-    pub fn new(allocator: &'a Allocator) -> Self {
+    pub fn new(allocator: &'a Allocator, source_text: &'a str) -> Self {
+        let ctx = Webpack4Ctx::new(source_text);
+
         Self {
             allocator,
-            is_webpack_4: false,
+            ctx,
         }
     }
 
-    pub fn build(self, program: &mut Program<'a>) {
+    pub fn build(mut self, program: &mut Program<'a>) {
         let (symbols, scopes) = SemanticBuilder::new("")
             .build(program)
             .semantic
@@ -178,27 +195,29 @@ impl<'a> WebPack4<'a> {
     }
 
     pub fn build_with_symbols_and_scopes(
-        self,
+        mut self,
         symbols: SymbolTable,
         scopes: ScopeTree,
         program: &mut Program<'a>,
     ) {
         let mut ctx = TraverseCtx::new(scopes, symbols, self.allocator);
 
-        let mut webpack4 = Webpack4Impl::new();
+        let mut webpack4 = Webpack4Impl::new(&self.ctx);
         webpack4.build(program, &mut ctx);
         println!("Found: {}", webpack4.found_scope_id.is_some());
     }
 }
 
-struct Webpack4Impl {
+struct Webpack4Impl<'a, 'ctx> {
+    ctx: &'ctx Webpack4Ctx<'a>,
     found_scope_id: Option<ScopeId>,
     program_source_type: Option<SourceType>,
 }
 
-impl<'a> Webpack4Impl {
-    pub fn new() -> Self {
+impl<'a, 'ctx> Webpack4Impl<'a, 'ctx> {
+    pub fn new(ctx: &'ctx Webpack4Ctx<'a>) -> Self {
         Self {
+            ctx,
             found_scope_id: None,
             program_source_type: None,
         }
@@ -209,7 +228,7 @@ impl<'a> Webpack4Impl {
     }
 }
 
-impl<'a> Traverse<'a> for Webpack4Impl {
+impl<'a, 'ctx> Traverse<'a> for Webpack4Impl<'a, 'ctx> {
     fn enter_program(&mut self, program: &mut Program<'a>, ctx: &mut TraverseCtx<'a>) {
         println!("enter program");
         self.program_source_type = Some(program.source_type);
