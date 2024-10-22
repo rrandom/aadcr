@@ -1,5 +1,5 @@
 use std::any::Any;
-use std::borrow::BorrowMut;
+use std::borrow::{Borrow, BorrowMut};
 use std::cell::RefCell;
 use std::vec;
 
@@ -22,12 +22,11 @@ use oxc_semantic::{NodeId, ScopeId, ScopeTree, Semantic, SemanticBuilder, Symbol
 use oxc_span::SourceType;
 use oxc_traverse::{Ancestor, Traverse, TraverseCtx};
 
+use rustc_hash::FxHashMap;
+
 pub struct Module {}
 
-pub fn get_modules_form_webpack4_deprecated(
-    allocator: &Allocator,
-    program: &Program,
-) -> Option<Module> {
+pub fn get_modules_form_webpack4(allocator: &Allocator, program: &Program) -> Option<Module> {
     let semantic = SemanticBuilder::new("").build(program).semantic;
 
     let mut factory_id = NodeId::DUMMY;
@@ -40,6 +39,8 @@ pub fn get_modules_form_webpack4_deprecated(
     let mut program_directives = None;
 
     let mut module_fun_ids = vec![];
+
+    let mut module_funs: FxHashMap<NodeId, std::vec::Vec<SymbolId>> = FxHashMap::default();
 
     // println!("===");
 
@@ -100,28 +101,28 @@ pub fn get_modules_form_webpack4_deprecated(
                 }
             }
             AstKind::Argument(_) => {
-                if let Some(id) =  semantic.nodes().parent_id(node.id()){
+                if let Some(id) = semantic.nodes().parent_id(node.id()) {
                     if id == factory_id {
-                      arg_id = node.id();
+                        arg_id = node.id();
                     }
                 }
             }
             AstKind::ArrayExpression(_) => {
-                if let Some(id) =  semantic.nodes().parent_id(node.id()){
+                if let Some(id) = semantic.nodes().parent_id(node.id()) {
                     if id == arg_id {
-                       ae_id = node.id();
+                        ae_id = node.id();
                     }
                 }
             }
             AstKind::Function(fun) => {
-                println!(
-                    "Enter Function: {:?}, parent: {:?} with",
-                    node.id(),
-                    semantic.nodes().parent_id(node.id()),
-                    // semantic.nodes().get_node(semantic.nodes().parent_id(node.id()).unwrap
-                );
+                // println!(
+                //     "Enter Function: {:?}, parent: {:?} with",
+                //     node.id(),
+                //     semantic.nodes().parent_id(node.id()),
+                //     // semantic.nodes().get_node(semantic.nodes().parent_id(node.id()).unwrap
+                // );
 
-                let mut rec  = node.id();
+                let mut rec = node.id();
                 for _ in 0..3 {
                     let ancestor_id = semantic.nodes().parent_id(rec);
                     if ancestor_id.is_none() {
@@ -134,19 +135,40 @@ pub fn get_modules_form_webpack4_deprecated(
                 if ae_id == rec {
                     println!("Got!");
                     module_fun_ids.push(node.id());
+
+                    // println!("{:#?}", node);
+                    for param in fun.params.items.iter() {
+                        match &param.pattern.kind {
+                            BindingPatternKind::BindingIdentifier(s) => {
+                                println!(
+                                    "Fun: {:?} => bd: {:?}, {:?}",
+                                    node.id(),
+                                    s.name,
+                                    s.symbol_id
+                                );
+
+                                let x = module_funs
+                                    .entry(node.id())
+                                    .or_insert_with(std::vec::Vec::new); // 确保获取到 Vec<SymbolId>
+                                let sid = s.symbol_id.get().unwrap();
+                                x.push(sid); // 现在可以安全地调用 push
+                            }
+                            _ => {}
+                        }
+                    }
                 }
             }
             _ => {}
         }
     }
 
-    println!("ard_id: {:?}, ae_id: {:?}, module_fun_ids: {:?}", arg_id, ae_id, module_fun_ids);
-    // println!("n274: {:?}", n274);
-    // println!("n275: {:?}", n275);
+    println!(
+        "ard_id: {:?}, ae_id: {:?}, module_fun_ids: {:?} and moduleFuns: {:#?}",
+        arg_id, ae_id, module_fun_ids, module_funs
+    );
 
-    // let n = semantic.nodes().get_node(NodeId::new(288));
-
-    // println!("=={:?}", n);
+    // TODO
+    // 通过get_node_mut获取fun_id，尝试更改require结构，获取export
 
     if factory_id == NodeId::DUMMY {
         None
@@ -200,7 +222,7 @@ pub fn get_modules_form_webpack4_deprecated(
 
                 let semantic = SemanticBuilder::new("").build(&new_program).semantic;
 
-                require_helper(&allocator, &mut new_program);
+                // require_helper(&allocator, &mut new_program);
 
                 // println!("is fun {:?}", function_expr);
                 if let Some(fun_body) = &function_expr.body {
@@ -255,7 +277,7 @@ pub fn require_helper<'a>(allocator: &'a Allocator, pg: &mut Program) {
     }
 }
 
-pub fn get_modules_form_webpack4<'a>(
+pub fn get_modules_form_webpack4_deprecated<'a>(
     allocator: &'a Allocator,
     program: &mut Program<'a>,
     source_text: &'a str,
