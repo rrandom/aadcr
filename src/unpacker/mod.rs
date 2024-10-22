@@ -169,6 +169,7 @@ pub fn get_modules_form_webpack4(allocator: &Allocator, program: &Program) -> Op
 
     // TODO
     // 通过get_node_mut获取fun_id，尝试更改require结构，获取export
+    // 然后fun body => program
 
     if factory_id == NodeId::DUMMY {
         None
