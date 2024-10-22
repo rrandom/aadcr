@@ -12,7 +12,7 @@ use oxc_span::SourceType;
 // use oxc_transformer::{EnvOptions, Targets, TransformOptions, Transformer};
 use pico_args::Arguments;
 
-use unpacker::get_modules_form_webpack4;
+use unpacker::{get_modules_form_webpack4, get_modules_form_webpack4_deprecated};
 
 fn main() {
     let mut args = Arguments::from_env();
@@ -54,7 +54,9 @@ fn main() {
         }
     }
 
-    get_modules_form_webpack4(&allocator, &mut program, &source_text);
+    // get_modules_form_webpack4(&allocator, &mut program, &source_text);
+
+    get_modules_form_webpack4_deprecated(&allocator, &mut program);
 
     // let (symbols, scopes) = ret.semantic.into_symbol_table_and_scope_tree();
 

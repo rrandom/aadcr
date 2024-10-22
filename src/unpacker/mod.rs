@@ -1,8 +1,14 @@
+use std::borrow::BorrowMut;
 use std::cell::RefCell;
+use std::vec;
 
 use oxc_allocator::{Allocator, Vec};
 use oxc_allocator::{Box, CloneIn};
-use oxc_ast::ast::{AssignmentTarget, StaticMemberExpression, UnaryExpression};
+use oxc_ast::ast::{
+    AssignmentTarget, BindingIdentifier, BindingPatternKind, Function, Statement,
+    StaticMemberExpression, UnaryExpression,
+};
+use oxc_ast::AstBuilder;
 use oxc_ast::{
     ast::{
         ArrayExpressionElement, AssignmentExpression, Directive, Expression, FormalParameter,
@@ -30,11 +36,6 @@ pub fn get_modules_form_webpack4_deprecated(
     let mut program_directives = None;
 
     // println!("===");
-
-    let (mut symbol_table, _) = SemanticBuilder::new("")
-        .build(program)
-        .semantic
-        .into_symbol_table_and_scope_tree();
 
     for node in semantic.nodes().iter() {
         match node.kind() {
@@ -110,17 +111,46 @@ pub fn get_modules_form_webpack4_deprecated(
                 // dbg!(&scope_id);
                 // dbg!(&function_expr.params);
 
-                for (it, new_name) in function_expr
-                    .params
-                    .items
-                    .iter()
-                    .zip(["module", "exports", "require"])
-                {
-                    let FormalParameter { pattern, .. } = it;
-                    let bd = pattern.get_binding_identifier().unwrap();
-                    let id = bd.symbol_id.get().unwrap();
-                    symbol_table.set_name(id, new_name.into());
-                }
+                // for (it, new_name) in function_expr
+                //     .params
+                //     .items
+                //     .iter()
+                //     .zip(["module", "exports", "require"])
+                // {
+                //     let FormalParameter { pattern, .. } = it;
+                //     let bd = pattern.get_binding_identifier().unwrap();
+                //     let id = bd.symbol_id.get().unwrap();
+                //     symbol_table.set_name(id, new_name.into());
+                // }
+
+                let mut function_expr1 = function_expr.clone_in(&allocator);
+
+                // let st = Statement::ExpressionStatement(e.as_expression());
+
+                let ast = AstBuilder::new(allocator);
+                // ast.program(span, source_type, hashbang, directives, body)
+
+                let k = ast.statement_expression(
+                    function_expr1.span,
+                    e.as_expression().unwrap().clone_in(&allocator),
+                );
+
+                let mut body = Vec::new_in(&allocator);
+
+                body.push(k);
+
+                let mut new_program = Program::new(
+                    function_expr.span.clone_in(&allocator),
+                    program_source_type.unwrap().clone_in(&allocator),
+                    // fun.directives.clone_in(&allocator),
+                    Vec::new_in(&allocator),
+                    None,
+                    body,
+                );
+
+                let semantic = SemanticBuilder::new("").build(&new_program).semantic;
+
+                require_helper(&allocator, &mut new_program);
 
                 // println!("is fun {:?}", function_expr);
                 if let Some(fun_body) = &function_expr.body {
@@ -151,6 +181,30 @@ pub fn get_modules_form_webpack4_deprecated(
     }
 }
 
+pub fn require_helper<'a>(allocator: &'a Allocator, pg: &mut Program) {
+    for s in pg.body.iter_mut() {
+        match s {
+            Statement::ExpressionStatement(ff) => {
+                match ff.expression.borrow_mut() {
+                    Expression::FunctionExpression(fun) => {
+                        for param in fun.params.items.iter() {
+                            match &param.pattern.kind {
+                                BindingPatternKind::BindingIdentifier(s) => {
+                                    println!("bd: {:?}, {:?}", s.name, s.symbol_id);
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+                // fun.declare = true;
+            }
+            _ => {}
+        }
+    }
+}
+
 pub fn get_modules_form_webpack4<'a>(
     allocator: &'a Allocator,
     program: &mut Program<'a>,
@@ -161,12 +215,14 @@ pub fn get_modules_form_webpack4<'a>(
 }
 #[derive(Debug)]
 struct ModuleIds {
-    ids: RefCell<std::vec::Vec<usize>>
+    ids: RefCell<std::vec::Vec<usize>>,
 }
 
 impl ModuleIds {
     pub fn new() -> Self {
-        Self { ids: RefCell::new(vec![]) }
+        Self {
+            ids: RefCell::new(vec![]),
+        }
     }
 
     pub fn insert_id(&self, stmt: usize) {
@@ -179,10 +235,8 @@ struct Webpack4Ctx<'a> {
     pub module_ids: ModuleIds,
 }
 
-impl <'a> Webpack4Ctx<'a> {
-    pub fn new(
-        source_text: &'a str,
-    ) -> Self {
+impl<'a> Webpack4Ctx<'a> {
+    pub fn new(source_text: &'a str) -> Self {
         Self {
             source_text,
             module_ids: ModuleIds::new(),
@@ -198,10 +252,7 @@ impl<'a> WebPack4<'a> {
     pub fn new(allocator: &'a Allocator, source_text: &'a str) -> Self {
         let ctx = Webpack4Ctx::new(source_text);
 
-        Self {
-            allocator,
-            ctx,
-        }
+        Self { allocator, ctx }
     }
 
     pub fn build(mut self, program: &mut Program<'a>) {
@@ -273,6 +324,21 @@ impl<'a, 'ctx> Traverse<'a> for Webpack4Impl<'a, 'ctx> {
                 if all_is_fun {
                     self.found_scope_id = Some(ctx.current_scope_id());
                     println!("{:?}", ctx.current_scope_id());
+                    for arg in args.elements.iter() {
+                        match arg {
+                            ArrayExpressionElement::FunctionExpression(fe) => {
+                                for param in fe.params.items.iter() {
+                                    match &param.pattern.kind {
+                                        BindingPatternKind::BindingIdentifier(s) => {
+                                            println!("bd: {:?}", s);
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
                 }
             }
         }
@@ -319,6 +385,7 @@ impl<'a, 'ctx> Traverse<'a> for Webpack4Impl<'a, 'ctx> {
             .iter()
             .map(|it| it.pattern.get_identifier())
             .collect();
+
         println!(
             "in Function, found: {:?} with scopeId {:?} and parent {:?} with parameter {:?}",
             self.found_scope_id,
