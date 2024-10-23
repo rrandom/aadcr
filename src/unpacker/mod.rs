@@ -18,7 +18,9 @@ use oxc_ast::{
     AstKind,
 };
 use oxc_codegen::CodeGenerator;
-use oxc_semantic::{NodeId, ScopeId, ScopeTree, Semantic, SemanticBuilder, SymbolId, SymbolTable};
+use oxc_semantic::{
+    NodeId, Reference, ScopeId, ScopeTree, Semantic, SemanticBuilder, SymbolId, SymbolTable,
+};
 use oxc_span::{SourceType, Span};
 use oxc_traverse::{Ancestor, Traverse, TraverseCtx};
 
@@ -190,33 +192,21 @@ pub fn get_modules_form_webpack4(allocator: &Allocator, program: &Program) -> Op
         ast.vec1(st),
     );
 
-    let semantic = SemanticBuilder::new("").build(&program).semantic;
+    WebPack4::new(allocator, "").build(&mut program);
 
-    // TO-DO
-    // 需要traverse才可以
-    // 用下面的webpack4 traverse去遍历astnode吧
-    // let new_param_names = ["module", "exports", "require"];
-    // for (idx, param) in newf.params.items.iter_mut().enumerate() {
-    //     if idx < new_param_names.len() {
-    //         if let BindingPatternKind::BindingIdentifier(binding) = &mut param.pattern.kind {
-    //             // 获取参数的符号ID
-    //             if let Some(symbol_id) = binding.symbol_id.get() {
-    //                 // 获取所有引用该符号的位置
-    //                 let references = semantic.symbol_references(symbol_id);
-
-    //                 // 更新所有引用处的名称
-    //                 for reference in references {
-    //                     // TODO: 使用 semantic API 更新每个引用处的名称为 new_param_names[idx]
-    //                     binding.name = new_param_names[idx].into();
-    //                 }
-    //             }
-    //         }
-    //     }
-    // }
-
+    match &program.body[0] {
+        Statement::ExpressionStatement(es) => {
+            if let Expression::FunctionExpression(f) = &es.expression {
+                if let Some(body) = &f.body {
+                    program.body = body.statements.clone_in(&allocator);
+                }
+            }
+        }
+        _ => unreachable!()
+    }
     let module_str = CodeGenerator::new().build(&program).code;
 
-    println!("{:#?}", &program);
+    // println!("{:#?}", &program);
 
     println!("Program===>:\n {}", module_str);
 
@@ -303,30 +293,6 @@ pub fn get_modules_form_webpack4(allocator: &Allocator, program: &Program) -> Op
     }
 }
 
-pub fn require_helper<'a>(allocator: &'a Allocator, pg: &mut Program) {
-    for s in pg.body.iter_mut() {
-        match s {
-            Statement::ExpressionStatement(ff) => {
-                match ff.expression.borrow_mut() {
-                    Expression::FunctionExpression(fun) => {
-                        for param in fun.params.items.iter() {
-                            match &param.pattern.kind {
-                                BindingPatternKind::BindingIdentifier(s) => {
-                                    println!("bd: {:?}, {:?}", s.name, s.symbol_id);
-                                }
-                                _ => {}
-                            }
-                        }
-                    }
-                    _ => {}
-                }
-                // fun.declare = true;
-            }
-            _ => {}
-        }
-    }
-}
-
 pub fn get_modules_form_webpack4_deprecated<'a>(
     allocator: &'a Allocator,
     program: &mut Program<'a>,
@@ -391,12 +357,35 @@ impl<'a> WebPack4<'a> {
         scopes: ScopeTree,
         program: &mut Program<'a>,
     ) {
+        let mut symbol_ids = vec![];
+        match &program.body[0] {
+            Statement::ExpressionStatement(es) => {
+                match &es.expression {
+                    Expression::FunctionExpression(f)  => {
+                        for param in f.params.items.iter() {
+                            if let BindingPatternKind::BindingIdentifier(binding) = &param.pattern.kind {
+                                if let Some(symbol_id) = binding.symbol_id.get() {
+                                    symbol_ids.push(symbol_id);
+                                }
+                            }
+                        }
+                    }
+                    _ => {
+                        unreachable!();
+                    }
+                    
+                }
+            }
+            _ => {
+                unreachable!();
+            }
+        }        
         let mut ctx = TraverseCtx::new(scopes, symbols, self.allocator);
 
-        let mut webpack4 = Webpack4Impl::new(&self.ctx);
+        let mut webpack4 = Webpack4Impl::new(&self.ctx, symbol_ids);
         webpack4.build(program, &mut ctx);
-        println!("Found: {}", webpack4.found_scope_id.is_some());
-        println!("ctx: {:?}", &self.ctx.module_ids);
+        // println!("Found: {}", webpack4.found_scope_id.is_some());
+        // println!("ctx: {:?}", &self.ctx.module_ids);
     }
 }
 
@@ -404,14 +393,16 @@ struct Webpack4Impl<'a, 'ctx> {
     ctx: &'ctx Webpack4Ctx<'a>,
     found_scope_id: Option<ScopeId>,
     program_source_type: Option<SourceType>,
+    symbol_ids: std::vec::Vec<SymbolId>,
 }
 
 impl<'a, 'ctx> Webpack4Impl<'a, 'ctx> {
-    pub fn new(ctx: &'ctx Webpack4Ctx<'a>) -> Self {
+    pub fn new(ctx: &'ctx Webpack4Ctx<'a>, symbol_ids: std::vec::Vec<SymbolId>) -> Self {
         Self {
             ctx,
             found_scope_id: None,
             program_source_type: None,
+            symbol_ids,
         }
     }
 
@@ -421,99 +412,122 @@ impl<'a, 'ctx> Webpack4Impl<'a, 'ctx> {
 }
 
 impl<'a, 'ctx> Traverse<'a> for Webpack4Impl<'a, 'ctx> {
-    fn enter_program(&mut self, program: &mut Program<'a>, ctx: &mut TraverseCtx<'a>) {
-        println!("enter program");
-        self.program_source_type = Some(program.source_type);
-        let _program_directives = Some(&program.directives);
-    }
+    // fn enter_program(&mut self, program: &mut Program<'a>, ctx: &mut TraverseCtx<'a>) {
+    //     println!("enter program");
+    //     self.program_source_type = Some(program.source_type);
+    //     let _program_directives = Some(&program.directives);
+    // }
 
-    fn exit_program(&mut self, program: &mut Program<'a>, ctx: &mut TraverseCtx<'a>) {
-        println!("exit program");
-    }
+    // fn exit_program(&mut self, program: &mut Program<'a>, ctx: &mut TraverseCtx<'a>) {
+    //     println!("exit program");
+    // }
 
-    fn enter_call_expression(
+    // fn enter_call_expression(
+    //     &mut self,
+    //     call_expr: &mut oxc_ast::ast::CallExpression<'a>,
+    //     ctx: &mut TraverseCtx<'a>,
+    // ) {
+    //     if call_expr.arguments.len() == 1 {
+    //         if let Some(Expression::ArrayExpression(args)) = call_expr.arguments[0].as_expression()
+    //         {
+    //             let all_is_fun = args
+    //                 .elements
+    //                 .iter()
+    //                 .all(|arg| matches!(arg, ArrayExpressionElement::FunctionExpression(_)));
+    //             if all_is_fun {
+    //                 self.found_scope_id = Some(ctx.current_scope_id());
+    //                 println!("{:?}", ctx.current_scope_id());
+    //                 for arg in args.elements.iter() {
+    //                     match arg {
+    //                         ArrayExpressionElement::FunctionExpression(fe) => {
+    //                             for param in fe.params.items.iter() {
+    //                                 match &param.pattern.kind {
+    //                                     BindingPatternKind::BindingIdentifier(s) => {
+    //                                         println!("bd: {:?}", s);
+    //                                     }
+    //                                     _ => {}
+    //                                 }
+    //                             }
+    //                         }
+    //                         _ => {}
+    //                     }
+    //                 }
+    //             }
+    //         }
+    //     }
+    // }
+
+    // fn enter_assignment_expression(
+    //     &mut self,
+    //     assign_expr: &mut AssignmentExpression<'a>,
+    //     ctx: &mut TraverseCtx<'a>,
+    // ) {
+    //     match (self.found_scope_id, assign_expr) {
+    //         (
+    //             Some(factory_scope_id),
+    //             AssignmentExpression {
+    //                 left: AssignmentTarget::StaticMemberExpression(mem),
+    //                 right: Expression::NumericLiteral(val),
+    //                 ..
+    //             },
+    //         ) => {
+    //             if mem.object.is_identifier_reference()
+    //                 && mem.property.name.as_str() == "s"
+    //                 && ctx.ancestor_scopes().any(|id| id == factory_scope_id)
+    //             {
+    //                 self.ctx.module_ids.insert_id(val.value as usize);
+    //                 println!(
+    //                     "{:?}, {}, {:?}, {:?}\n {:?}, {:?}",
+    //                     mem,
+    //                     val.value,
+    //                     ctx.current_scope_id(),
+    //                     ctx.scopes().get_bindings(ctx.current_scope_id()),
+    //                     ctx.scopes().get_bindings(self.found_scope_id.unwrap()),
+    //                     ctx.ancestor_scopes().collect::<std::vec::Vec<_>>()
+    //                 );
+    //             }
+    //         }
+    //         _ => {}
+    //     }
+    // }
+
+    fn enter_identifier_reference(
         &mut self,
-        call_expr: &mut oxc_ast::ast::CallExpression<'a>,
+        idf: &mut oxc_ast::ast::IdentifierReference<'a>,
         ctx: &mut TraverseCtx<'a>,
     ) {
-        if call_expr.arguments.len() == 1 {
-            if let Some(Expression::ArrayExpression(args)) = call_expr.arguments[0].as_expression()
-            {
-                let all_is_fun = args
-                    .elements
-                    .iter()
-                    .all(|arg| matches!(arg, ArrayExpressionElement::FunctionExpression(_)));
-                if all_is_fun {
-                    self.found_scope_id = Some(ctx.current_scope_id());
-                    println!("{:?}", ctx.current_scope_id());
-                    for arg in args.elements.iter() {
-                        match arg {
-                            ArrayExpressionElement::FunctionExpression(fe) => {
-                                for param in fe.params.items.iter() {
-                                    match &param.pattern.kind {
-                                        BindingPatternKind::BindingIdentifier(s) => {
-                                            println!("bd: {:?}", s);
-                                        }
-                                        _ => {}
-                                    }
-                                }
-                            }
-                            _ => {}
-                        }
-                    }
+        let id = idf.reference_id.get().unwrap();
+        let refencer = ctx.scoping.symbols().references.get(id);
+        if let Some(r) = refencer {
+            if let Some(s) = r.symbol_id() {
+                if let Some(index) = self.symbol_ids.iter().position(|&x| x == s) {
+                    let new_name = match index {
+                        0 => "module",
+                        1 => "exports",
+                        2 => "require",
+                        _ => unreachable!(),
+                    };
+                    idf.name = new_name.into();
                 }
+
             }
         }
     }
 
-    fn enter_assignment_expression(
-        &mut self,
-        assign_expr: &mut AssignmentExpression<'a>,
-        ctx: &mut TraverseCtx<'a>,
-    ) {
-        match (self.found_scope_id, assign_expr) {
-            (
-                Some(factory_scope_id),
-                AssignmentExpression {
-                    left: AssignmentTarget::StaticMemberExpression(mem),
-                    right: Expression::NumericLiteral(val),
-                    ..
-                },
-            ) => {
-                if mem.object.is_identifier_reference()
-                    && mem.property.name.as_str() == "s"
-                    && ctx.ancestor_scopes().any(|id| id == factory_scope_id)
-                {
-                    self.ctx.module_ids.insert_id(val.value as usize);
-                    println!(
-                        "{:?}, {}, {:?}, {:?}\n {:?}, {:?}",
-                        mem,
-                        val.value,
-                        ctx.current_scope_id(),
-                        ctx.scopes().get_bindings(ctx.current_scope_id()),
-                        ctx.scopes().get_bindings(self.found_scope_id.unwrap()),
-                        ctx.ancestor_scopes().collect::<std::vec::Vec<_>>()
-                    );
-                }
-            }
-            _ => {}
-        }
-    }
+    // fn enter_function(&mut self, fun: &mut oxc_ast::ast::Function<'a>, ctx: &mut TraverseCtx<'a>) {
+    //     let ns: std::vec::Vec<_> = fun
+    //         .params
+    //         .items
+    //         .iter()
+    //         .map(|it| it.pattern.get_identifier())
+    //         .collect();
 
-    fn enter_function(&mut self, fun: &mut oxc_ast::ast::Function<'a>, ctx: &mut TraverseCtx<'a>) {
-        let ns: std::vec::Vec<_> = fun
-            .params
-            .items
-            .iter()
-            .map(|it| it.pattern.get_identifier())
-            .collect();
-
-        println!(
-            "in Function, found: {:?} with scopeId {:?} and parent {:?} with parameter {:?}",
-            self.found_scope_id,
-            ctx.current_scope_id(),
-            ctx.scopes().get_parent_id(ctx.current_scope_id()),
-            ns
-        );
-    }
+    //     println!(
+    //         "in Function, found: {:?} with scopeId {:?} and parent {:?} with parameter {:?}",
+    //         self.found_scope_id,
+    //         ctx.current_scope_id(),
+    //         ctx.scopes().get_parent_id(ctx.current_scope_id()),
+    //         ns
+    //     );
+    // }
 }
