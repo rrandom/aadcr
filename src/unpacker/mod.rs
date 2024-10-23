@@ -19,7 +19,7 @@ use oxc_ast::{
 };
 use oxc_codegen::CodeGenerator;
 use oxc_semantic::{NodeId, ScopeId, ScopeTree, Semantic, SemanticBuilder, SymbolId, SymbolTable};
-use oxc_span::SourceType;
+use oxc_span::{SourceType, Span};
 use oxc_traverse::{Ancestor, Traverse, TraverseCtx};
 
 use rustc_hash::FxHashMap;
@@ -167,21 +167,58 @@ pub fn get_modules_form_webpack4(allocator: &Allocator, program: &Program) -> Op
         factory_id, factory_arg_id, factory_arg_ele_id, module_fun_ids, entry_ids, module_funs
     );
 
-    for (id, n) in nodes.iter().enumerate() {
-        if let Some(n) = nodes.parent_id(n.id()) {
-            if n == factory_id {
-                println!(
-                    "get: {:?} and {:?}",
-                    id,
-                    nodes.kind(NodeId::new(id as u32)).debug_name()
-                );
-            }
-        }
-    }
-
     // TODO
     // 通过get_node_mut获取fun_id，尝试更改require结构，获取export
     // 然后fun body => program
+
+    let f1 = nodes.get_node(NodeId::new(311)).kind();
+
+    let f1 = f1.as_function().unwrap();
+
+    let mut newf = f1.clone_in(&allocator);
+
+    // println!("{:#?}", newf);
+
+    let ast = AstBuilder::new(allocator);
+    let st = ast.statement_expression(f1.span, ast.expression_from_function(newf));
+
+    let mut program = ast.program(
+        Span::default(),
+        program_source_type.unwrap().clone_in(&allocator),
+        None,
+        ast.vec(),
+        ast.vec1(st),
+    );
+
+    let semantic = SemanticBuilder::new("").build(&program).semantic;
+
+    // TO-DO
+    // 需要traverse才可以
+    // 用下面的webpack4 traverse去遍历astnode吧
+    // let new_param_names = ["module", "exports", "require"];
+    // for (idx, param) in newf.params.items.iter_mut().enumerate() {
+    //     if idx < new_param_names.len() {
+    //         if let BindingPatternKind::BindingIdentifier(binding) = &mut param.pattern.kind {
+    //             // 获取参数的符号ID
+    //             if let Some(symbol_id) = binding.symbol_id.get() {
+    //                 // 获取所有引用该符号的位置
+    //                 let references = semantic.symbol_references(symbol_id);
+
+    //                 // 更新所有引用处的名称
+    //                 for reference in references {
+    //                     // TODO: 使用 semantic API 更新每个引用处的名称为 new_param_names[idx]
+    //                     binding.name = new_param_names[idx].into();
+    //                 }
+    //             }
+    //         }
+    //     }
+    // }
+
+    let module_str = CodeGenerator::new().build(&program).code;
+
+    println!("{:#?}", &program);
+
+    println!("Program===>:\n {}", module_str);
 
     if factory_id == NodeId::DUMMY {
         None
