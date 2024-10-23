@@ -169,10 +169,6 @@ pub fn get_modules_form_webpack4(allocator: &Allocator, program: &Program) -> Op
         factory_id, factory_arg_id, factory_arg_ele_id, module_fun_ids, entry_ids, module_funs
     );
 
-    // TODO
-    // 通过get_node_mut获取fun_id，尝试更改require结构，获取export
-    // 然后fun body => program
-
     for fun_id in module_fun_ids {
         let f1 = nodes.get_node(fun_id).kind().as_function().unwrap();
         let mut newf = f1.clone_in(&allocator);
