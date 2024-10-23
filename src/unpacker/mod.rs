@@ -173,42 +173,41 @@ pub fn get_modules_form_webpack4(allocator: &Allocator, program: &Program) -> Op
     // 通过get_node_mut获取fun_id，尝试更改require结构，获取export
     // 然后fun body => program
 
-    let f1 = nodes.get_node(NodeId::new(311)).kind();
+    for fun_id in module_fun_ids {
+        let f1 = nodes.get_node(fun_id).kind().as_function().unwrap();
+        let mut newf = f1.clone_in(&allocator);
 
-    let f1 = f1.as_function().unwrap();
+        // println!("{:#?}", newf);
 
-    let mut newf = f1.clone_in(&allocator);
+        let ast = AstBuilder::new(allocator);
+        let st = ast.statement_expression(f1.span, ast.expression_from_function(newf));
 
-    // println!("{:#?}", newf);
+        let mut program = ast.program(
+            Span::default(),
+            program_source_type.unwrap().clone_in(&allocator),
+            None,
+            ast.vec(),
+            ast.vec1(st),
+        );
 
-    let ast = AstBuilder::new(allocator);
-    let st = ast.statement_expression(f1.span, ast.expression_from_function(newf));
+        WebPack4::new(allocator, "").build(&mut program);
 
-    let mut program = ast.program(
-        Span::default(),
-        program_source_type.unwrap().clone_in(&allocator),
-        None,
-        ast.vec(),
-        ast.vec1(st),
-    );
-
-    WebPack4::new(allocator, "").build(&mut program);
-
-    match &program.body[0] {
-        Statement::ExpressionStatement(es) => {
-            if let Expression::FunctionExpression(f) = &es.expression {
-                if let Some(body) = &f.body {
-                    program.body = body.statements.clone_in(&allocator);
+        match &program.body[0] {
+            Statement::ExpressionStatement(es) => {
+                if let Expression::FunctionExpression(f) = &es.expression {
+                    if let Some(body) = &f.body {
+                        program.body = body.statements.clone_in(&allocator);
+                    }
                 }
             }
+            _ => unreachable!(),
         }
-        _ => unreachable!()
+        let module_str = CodeGenerator::new().build(&program).code;
+
+        // println!("{:#?}", &program);
+
+        println!("Program===>:\n {}", module_str);
     }
-    let module_str = CodeGenerator::new().build(&program).code;
-
-    // println!("{:#?}", &program);
-
-    println!("Program===>:\n {}", module_str);
 
     if factory_id == NodeId::DUMMY {
         None
@@ -359,27 +358,25 @@ impl<'a> WebPack4<'a> {
     ) {
         let mut symbol_ids = vec![];
         match &program.body[0] {
-            Statement::ExpressionStatement(es) => {
-                match &es.expression {
-                    Expression::FunctionExpression(f)  => {
-                        for param in f.params.items.iter() {
-                            if let BindingPatternKind::BindingIdentifier(binding) = &param.pattern.kind {
-                                if let Some(symbol_id) = binding.symbol_id.get() {
-                                    symbol_ids.push(symbol_id);
-                                }
+            Statement::ExpressionStatement(es) => match &es.expression {
+                Expression::FunctionExpression(f) => {
+                    for param in f.params.items.iter() {
+                        if let BindingPatternKind::BindingIdentifier(binding) = &param.pattern.kind
+                        {
+                            if let Some(symbol_id) = binding.symbol_id.get() {
+                                symbol_ids.push(symbol_id);
                             }
                         }
                     }
-                    _ => {
-                        unreachable!();
-                    }
-                    
                 }
-            }
+                _ => {
+                    unreachable!();
+                }
+            },
             _ => {
                 unreachable!();
             }
-        }        
+        }
         let mut ctx = TraverseCtx::new(scopes, symbols, self.allocator);
 
         let mut webpack4 = Webpack4Impl::new(&self.ctx, symbol_ids);
@@ -509,7 +506,6 @@ impl<'a, 'ctx> Traverse<'a> for Webpack4Impl<'a, 'ctx> {
                     };
                     idf.name = new_name.into();
                 }
-
             }
         }
     }
