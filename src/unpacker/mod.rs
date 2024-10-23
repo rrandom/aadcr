@@ -30,8 +30,9 @@ pub fn get_modules_form_webpack4(allocator: &Allocator, program: &Program) -> Op
     let semantic = SemanticBuilder::new("").build(program).semantic;
 
     let mut factory_id = NodeId::DUMMY;
-    let mut arg_id = NodeId::DUMMY;
-    let mut ae_id = NodeId::DUMMY;
+    let mut factory_callee_id = NodeId::DUMMY;
+    let mut factory_arg_id = NodeId::DUMMY;
+    let mut factory_arg_ele_id = NodeId::DUMMY;
 
     let mut entry_ids = Vec::new_in(&allocator);
     let mut arr_expr = None;
@@ -42,9 +43,9 @@ pub fn get_modules_form_webpack4(allocator: &Allocator, program: &Program) -> Op
 
     let mut module_funs: FxHashMap<NodeId, std::vec::Vec<SymbolId>> = FxHashMap::default();
 
-    // println!("===");
+    let nodes = semantic.nodes();
 
-    for node in semantic.nodes().iter() {
+    for node in nodes.iter() {
         match node.kind() {
             // TO-DO: using `.root` should work too
             AstKind::Program(Program {
@@ -72,16 +73,22 @@ pub fn get_modules_form_webpack4(allocator: &Allocator, program: &Program) -> Op
                     }
                 }
             }
+            AstKind::ParenthesizedExpression(pe) => {
+                if let Some(id) = nodes.parent_id(node.id()) {
+                    if id == factory_id {
+                        factory_callee_id = node.id();
+                    }
+                }
+            }
             AstKind::AssignmentExpression(AssignmentExpression {
                 left,
                 right: Expression::NumericLiteral(s),
-                span,
                 ..
             }) => {
                 let contains = semantic
                     .nodes()
                     .ancestors(node.id())
-                    .any(|id| id == factory_id);
+                    .any(|id| id == factory_callee_id);
                 if !contains {
                     continue;
                 }
@@ -101,38 +108,31 @@ pub fn get_modules_form_webpack4(allocator: &Allocator, program: &Program) -> Op
                 }
             }
             AstKind::Argument(_) => {
-                if let Some(id) = semantic.nodes().parent_id(node.id()) {
+                if let Some(id) = nodes.parent_id(node.id()) {
                     if id == factory_id {
-                        arg_id = node.id();
+                        factory_arg_id = node.id();
                     }
                 }
             }
             AstKind::ArrayExpression(_) => {
-                if let Some(id) = semantic.nodes().parent_id(node.id()) {
-                    if id == arg_id {
-                        ae_id = node.id();
+                if let Some(id) = nodes.parent_id(node.id()) {
+                    if id == factory_arg_id {
+                        factory_arg_ele_id = node.id();
                     }
                 }
             }
             AstKind::Function(fun) => {
-                // println!(
-                //     "Enter Function: {:?}, parent: {:?} with",
-                //     node.id(),
-                //     semantic.nodes().parent_id(node.id()),
-                //     // semantic.nodes().get_node(semantic.nodes().parent_id(node.id()).unwrap
-                // );
-
                 let mut rec = node.id();
                 for _ in 0..3 {
-                    let ancestor_id = semantic.nodes().parent_id(rec);
+                    let ancestor_id = nodes.parent_id(rec);
                     if ancestor_id.is_none() {
                         break;
                     } else {
                         rec = ancestor_id.unwrap();
                     }
-                    println!("aa: {:?}", ancestor_id);
+                    // println!("aa: {:?}", ancestor_id);
                 }
-                if ae_id == rec {
+                if factory_arg_ele_id == rec {
                     println!("Got!");
                     module_fun_ids.push(node.id());
 
@@ -163,9 +163,21 @@ pub fn get_modules_form_webpack4(allocator: &Allocator, program: &Program) -> Op
     }
 
     println!(
-        "ard_id: {:?}, ae_id: {:?}, module_fun_ids: {:?} and moduleFuns: {:#?}",
-        arg_id, ae_id, module_fun_ids, module_funs
+        "factory: {:?} ard_id: {:?}, ae_id: {:?}, module_fun_ids: {:?}, entry_ids: {:?} and moduleFuns: {:?}",
+        factory_id, factory_arg_id, factory_arg_ele_id, module_fun_ids, entry_ids, module_funs
     );
+
+    for (id, n) in nodes.iter().enumerate() {
+        if let Some(n) = nodes.parent_id(n.id()) {
+            if n == factory_id {
+                println!(
+                    "get: {:?} and {:?}",
+                    id,
+                    nodes.kind(NodeId::new(id as u32)).debug_name()
+                );
+            }
+        }
+    }
 
     // TODO
     // 通过get_node_mut获取fun_id，尝试更改require结构，获取export
@@ -174,7 +186,7 @@ pub fn get_modules_form_webpack4(allocator: &Allocator, program: &Program) -> Op
     if factory_id == NodeId::DUMMY {
         None
     } else {
-        let module_factory = semantic.nodes().get_node(factory_id);
+        let module_factory = nodes.get_node(factory_id);
 
         for (module_id, e) in arr_expr.unwrap().elements.iter().enumerate() {
             // println!("Fun: {} ==: {:?}", module_id, e);
