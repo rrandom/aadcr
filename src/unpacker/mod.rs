@@ -6,7 +6,7 @@ use std::vec;
 use oxc_allocator::{Allocator, Vec};
 use oxc_allocator::{Box, CloneIn};
 use oxc_ast::ast::{
-    AssignmentTarget, BindingIdentifier, BindingPatternKind, Function, Statement,
+    AssignmentTarget, BindingIdentifier, BindingPatternKind, Function, IdentifierName, Statement,
     StaticMemberExpression, UnaryExpression,
 };
 use oxc_ast::AstBuilder;
@@ -19,7 +19,8 @@ use oxc_ast::{
 };
 use oxc_codegen::CodeGenerator;
 use oxc_semantic::{
-    NodeId, Reference, ScopeId, ScopeTree, Semantic, SemanticBuilder, SymbolId, SymbolTable,
+    NodeId, Reference, ReferenceId, ScopeId, ScopeTree, Semantic, SemanticBuilder, SymbolId,
+    SymbolTable,
 };
 use oxc_span::{Atom, SourceType, Span};
 use oxc_traverse::{Ancestor, Traverse, TraverseCtx};
@@ -328,17 +329,17 @@ impl SymbolIds {
         self.ids.borrow_mut().extend(ids);
     }
 
+    pub fn get_symbol_index(&self, id: SymbolId) -> Option<usize> {
+        self.ids.borrow().iter().position(|&x| x == id)
+    }
+
     pub fn get_symbol_name(&self, id: SymbolId) -> Option<Atom<'static>> {
-        self.ids
-            .borrow()
-            .iter()
-            .position(|&x| x == id)
-            .map(|index| match index {
-                0 => "module".into(),
-                1 => "exports".into(),
-                2 => "require".into(),
-                _ => unreachable!(),
-            })
+        self.get_symbol_index(id).map(|index| match index {
+            0 => "module".into(),
+            1 => "exports".into(),
+            2 => "require".into(),
+            _ => unreachable!(),
+        })
     }
 }
 
@@ -432,6 +433,21 @@ impl<'a, 'ctx> Webpack4Impl<'a, 'ctx> {
     }
 }
 
+impl<'a> Webpack4Impl<'a, '_> {
+    fn get_symbol_name(&self, id: SymbolId) -> Option<Atom<'static>> {
+        self.ctx.symbol_ids.get_symbol_name(id)
+    }
+
+    fn get_reference_index(&self, id: ReferenceId, ctx: &TraverseCtx<'a>) -> Option<usize> {
+        if let Some(refencer) = ctx.scoping.symbols().references.get(id) {
+            if let Some(s) = refencer.symbol_id() {
+                return self.ctx.symbol_ids.get_symbol_index(s);
+            }
+        }
+        None
+    }
+}
+
 impl<'a, 'ctx> Traverse<'a> for Webpack4Impl<'a, 'ctx> {
     // fn enter_program(&mut self, program: &mut Program<'a>, ctx: &mut TraverseCtx<'a>) {
     //     println!("enter program");
@@ -517,15 +533,46 @@ impl<'a, 'ctx> Traverse<'a> for Webpack4Impl<'a, 'ctx> {
         idf: &mut oxc_ast::ast::IdentifierReference<'a>,
         ctx: &mut TraverseCtx<'a>,
     ) {
-        let id = idf.reference_id.get().unwrap();
-        let refencer = ctx.scoping.symbols().references.get(id);
-        if let Some(r) = refencer {
-            if let Some(s) = r.symbol_id() {
-                if let Some(new_name) = self.ctx.symbol_ids.get_symbol_name(s) {
-                    idf.name = new_name;
+        if let Some(id) = idf.reference_id.get() {
+            if let Some(refencer) = ctx.scoping.symbols().references.get(id) {
+                if let Some(s) = refencer.symbol_id() {
+                    if let Some(new_name) = self.get_symbol_name(s) {
+                        idf.name = new_name;
+                    }
                 }
             }
         }
+    }
+
+    fn enter_call_expression(
+        &mut self,
+        call_expr: &mut oxc_ast::ast::CallExpression<'a>,
+        ctx: &mut TraverseCtx<'a>,
+    ) {
+        println!("call_expr: {:?}", call_expr);
+        let is_ESM = match &call_expr.callee {
+            Expression::StaticMemberExpression(mem) => match (&mem.object, &mem.property) {
+                (Expression::Identifier(idf), IdentifierName { name: property_name, .. }) => {
+                    if property_name.as_str() == "r" {
+                        if let Some(id) = idf.reference_id.get() {
+                            if let Some(index) = self.get_reference_index(id, ctx) {
+                                index == 2
+                            } else {
+                                false
+                            }
+                        } else {
+                            false
+                        }
+                    } else {
+                        false
+                    }
+                }
+                _ => false,
+            },
+            _ => false,
+        };
+
+        println!("is_ESM: {}", is_ESM);
     }
 
     // fn enter_function(&mut self, fun: &mut oxc_ast::ast::Function<'a>, ctx: &mut TraverseCtx<'a>) {
