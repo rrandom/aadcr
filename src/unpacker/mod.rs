@@ -324,10 +324,6 @@ impl SymbolIds {
         }
     }
 
-    pub fn insert_id(&self, id: SymbolId) {
-        self.ids.borrow_mut().push(id);
-    }
-
     pub fn insert_ids(&self, ids: std::vec::Vec<SymbolId>) {
         self.ids.borrow_mut().extend(ids);
     }
@@ -424,17 +420,11 @@ impl<'a> WebPack4<'a> {
 
 struct Webpack4Impl<'a, 'ctx> {
     ctx: &'ctx Webpack4Ctx<'a>,
-    found_scope_id: Option<ScopeId>,
-    program_source_type: Option<SourceType>,
 }
 
 impl<'a, 'ctx> Webpack4Impl<'a, 'ctx> {
     pub fn new(ctx: &'ctx Webpack4Ctx<'a>) -> Self {
-        Self {
-            ctx,
-            found_scope_id: None,
-            program_source_type: None,
-        }
+        Self { ctx }
     }
 
     fn build(&mut self, program: &mut Program<'a>, ctx: &mut TraverseCtx<'a>) {
