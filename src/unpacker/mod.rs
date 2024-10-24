@@ -1,6 +1,6 @@
 use std::any::Any;
 use std::borrow::{Borrow, BorrowMut};
-use std::cell::RefCell;
+use std::cell::{Ref, RefCell};
 use std::vec;
 
 use oxc_allocator::{Allocator, Vec};
@@ -21,7 +21,7 @@ use oxc_codegen::CodeGenerator;
 use oxc_semantic::{
     NodeId, Reference, ScopeId, ScopeTree, Semantic, SemanticBuilder, SymbolId, SymbolTable,
 };
-use oxc_span::{SourceType, Span};
+use oxc_span::{Atom, SourceType, Span};
 use oxc_traverse::{Ancestor, Traverse, TraverseCtx};
 
 use rustc_hash::FxHashMap;
@@ -332,9 +332,18 @@ impl SymbolIds {
         self.ids.borrow_mut().extend(ids);
     }
 
-    // pub fn iter(&self) -> impl Iterator<Item = &SymbolId> + '_  {
-    //     self.ids.borrow().iter()
-    // }
+    pub fn get_symbol_name(&self, id: SymbolId) -> Option<Atom<'static>> {
+        self.ids
+            .borrow()
+            .iter()
+            .position(|&x| x == id)
+            .map(|index| match index {
+                0 => "module".into(),
+                1 => "exports".into(),
+                2 => "require".into(),
+                _ => unreachable!(),
+            })
+    }
 }
 
 struct Webpack4Ctx<'a> {
@@ -410,8 +419,6 @@ impl<'a> WebPack4<'a> {
 
         let mut webpack4 = Webpack4Impl::new(&self.ctx);
         webpack4.build(program, &mut ctx);
-        // println!("Found: {}", webpack4.found_scope_id.is_some());
-        // println!("ctx: {:?}", &self.ctx.module_ids);
     }
 }
 
@@ -524,15 +531,8 @@ impl<'a, 'ctx> Traverse<'a> for Webpack4Impl<'a, 'ctx> {
         let refencer = ctx.scoping.symbols().references.get(id);
         if let Some(r) = refencer {
             if let Some(s) = r.symbol_id() {
-                // TODO: fix self.ctx.symbol_ids.ids.borrow().iter()
-                if let Some(index) = self.ctx.symbol_ids.ids.borrow().iter().position(|&x| x == s) {
-                    let new_name = match index {
-                        0 => "module",
-                        1 => "exports",
-                        2 => "require",
-                        _ => unreachable!(),
-                    };
-                    idf.name = new_name.into();
+                if let Some(new_name) = self.ctx.symbol_ids.get_symbol_name(s) {
+                    idf.name = new_name;
                 }
             }
         }
@@ -555,4 +555,3 @@ impl<'a, 'ctx> Traverse<'a> for Webpack4Impl<'a, 'ctx> {
     //     );
     // }
 }
-
