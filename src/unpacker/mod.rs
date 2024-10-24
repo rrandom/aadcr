@@ -3,6 +3,8 @@ use std::borrow::{Borrow, BorrowMut};
 use std::cell::{Ref, RefCell};
 use std::vec;
 
+use oxc_span::GetSpan;
+
 use oxc_allocator::{Allocator, Vec};
 use oxc_allocator::{Box, CloneIn};
 use oxc_ast::ast::{
@@ -446,6 +448,27 @@ impl<'a> Webpack4Impl<'a, '_> {
         }
         None
     }
+
+    fn is_esm(&self, expr: &Expression<'a>, ctx: &TraverseCtx<'a>) -> bool {
+        let Expression::CallExpression(call_expr) = expr else {
+            return false;
+        };
+        let Expression::StaticMemberExpression(mem) = &call_expr.callee else {
+            return false;
+        };
+        let (Expression::Identifier(idf), IdentifierName { name, .. }) =
+            (&mem.object, &mem.property)
+        else {
+            return false;
+        };
+        let Some(id) = idf.reference_id.get() else {
+            return false;
+        };
+        let Some(index) = self.get_reference_index(id, ctx) else {
+            return false;
+        };
+        name.as_str() == "r" && index == 2
+    }
 }
 
 impl<'a, 'ctx> Traverse<'a> for Webpack4Impl<'a, 'ctx> {
@@ -550,33 +573,54 @@ impl<'a, 'ctx> Traverse<'a> for Webpack4Impl<'a, 'ctx> {
         ctx: &mut TraverseCtx<'a>,
     ) {
         println!("call_expr: {:?}", call_expr);
-        let is_esm = match &call_expr.callee {
-            Expression::StaticMemberExpression(mem) => match (&mem.object, &mem.property) {
-                (Expression::Identifier(idf), IdentifierName { name: property_name, .. }) => {
-                    if property_name.as_str() == "r" {
-                        if let Some(id) = idf.reference_id.get() {
-                            if let Some(index) = self.get_reference_index(id, ctx) {
-                                index == 2
-                            } else {
-                                false
-                            }
-                        } else {
-                            false
-                        }
-                    } else {
-                        false
-                    }
-                }
-                _ => false,
-            },
-            _ => false,
-        };
+        // let is_esm = match &call_expr.callee {
+        //     Expression::StaticMemberExpression(mem) => match (&mem.object, &mem.property) {
+        //         (
+        //             Expression::Identifier(idf),
+        //             IdentifierName {
+        //                 name: property_name,
+        //                 ..
+        //             },
+        //         ) => {
+        //             if property_name.as_str() == "r" {
+        //                 if let Some(id) = idf.reference_id.get() {
+        //                     if let Some(index) = self.get_reference_index(id, ctx) {
+        //                         index == 2
+        //                     } else {
+        //                         false
+        //                     }
+        //                 } else {
+        //                     false
+        //                 }
+        //             } else {
+        //                 false
+        //             }
+        //         }
+        //         _ => false,
+        //     },
+        //     _ => false,
+        // };
 
-        println!("is_ESM: {}", is_esm);
+        // println!("is_ESM: {}", is_esm);
 
-        if is_esm {
-            // TO-DO: replace with void_0
+        // if is_esm {
+        //     // TO-DO: replace with void_0
+        // }
+    }
+
+    fn enter_expression(&mut self, expr: &mut Expression<'a>, ctx: &mut TraverseCtx<'a>) {
+        if self.is_esm(expr, ctx) {
+            // ctx.ast.empty_statement(expr.span());
+            // *expr = ctx.ast.void_0(expr.span());
         }
     }
 
+    fn enter_statement(&mut self, node: &mut Statement<'a>, ctx: &mut TraverseCtx<'a>) {
+        let Statement::ExpressionStatement(es) = node else {
+            return;
+        };
+        if self.is_esm(&es.expression, ctx) {
+            *node = ctx.ast.statement_empty(es.span);
+        }
+    }
 }
