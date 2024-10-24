@@ -550,7 +550,7 @@ impl<'a, 'ctx> Traverse<'a> for Webpack4Impl<'a, 'ctx> {
         ctx: &mut TraverseCtx<'a>,
     ) {
         println!("call_expr: {:?}", call_expr);
-        let is_ESM = match &call_expr.callee {
+        let is_esm = match &call_expr.callee {
             Expression::StaticMemberExpression(mem) => match (&mem.object, &mem.property) {
                 (Expression::Identifier(idf), IdentifierName { name: property_name, .. }) => {
                     if property_name.as_str() == "r" {
@@ -572,23 +572,11 @@ impl<'a, 'ctx> Traverse<'a> for Webpack4Impl<'a, 'ctx> {
             _ => false,
         };
 
-        println!("is_ESM: {}", is_ESM);
+        println!("is_ESM: {}", is_esm);
+
+        if is_esm {
+            // TO-DO: replace with void_0
+        }
     }
 
-    // fn enter_function(&mut self, fun: &mut oxc_ast::ast::Function<'a>, ctx: &mut TraverseCtx<'a>) {
-    //     let ns: std::vec::Vec<_> = fun
-    //         .params
-    //         .items
-    //         .iter()
-    //         .map(|it| it.pattern.get_identifier())
-    //         .collect();
-
-    //     println!(
-    //         "in Function, found: {:?} with scopeId {:?} and parent {:?} with parameter {:?}",
-    //         self.found_scope_id,
-    //         ctx.current_scope_id(),
-    //         ctx.scopes().get_parent_id(ctx.current_scope_id()),
-    //         ns
-    //     );
-    // }
 }
