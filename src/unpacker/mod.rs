@@ -189,7 +189,7 @@ pub fn get_modules_form_webpack4(allocator: &Allocator, program: &Program) -> Op
             ast.vec1(st),
         );
 
-        WebPack4::new(allocator, "").build(&mut program);
+        let ret = WebPack4::new(allocator, "").build(&mut program);
 
         match &program.body[0] {
             Statement::ExpressionStatement(es) => {
@@ -201,6 +201,7 @@ pub fn get_modules_form_webpack4(allocator: &Allocator, program: &Program) -> Op
             }
             _ => unreachable!(),
         }
+        println!("ret: {:?}", ret);
         let module_str = CodeGenerator::new().build(&program).code;
 
         // println!("{:#?}", &program);
@@ -349,6 +350,7 @@ struct Webpack4Ctx<'a> {
     pub source_text: &'a str,
     pub module_ids: ModuleIds,
     pub symbol_ids: SymbolIds,
+    pub is_esm: RefCell<bool>,
 }
 
 impl<'a> Webpack4Ctx<'a> {
@@ -357,12 +359,18 @@ impl<'a> Webpack4Ctx<'a> {
             source_text,
             module_ids: ModuleIds::new(),
             symbol_ids: SymbolIds::new(),
+            is_esm: RefCell::new(false),
         }
     }
 }
 struct WebPack4<'a> {
     ctx: Webpack4Ctx<'a>,
     allocator: &'a Allocator,
+}
+
+#[derive(Debug)]
+struct Webpack4Return {
+    pub is_esm: bool,
 }
 
 impl<'a> WebPack4<'a> {
@@ -372,12 +380,12 @@ impl<'a> WebPack4<'a> {
         Self { allocator, ctx }
     }
 
-    pub fn build(mut self, program: &mut Program<'a>) {
+    pub fn build(mut self, program: &mut Program<'a>) -> Webpack4Return {
         let (symbols, scopes) = SemanticBuilder::new("")
             .build(program)
             .semantic
             .into_symbol_table_and_scope_tree();
-        self.build_with_symbols_and_scopes(symbols, scopes, program);
+        self.build_with_symbols_and_scopes(symbols, scopes, program)
     }
 
     pub fn get_parameter_symbols_id(&self, program: &Program<'a>) -> std::vec::Vec<SymbolId> {
@@ -410,7 +418,7 @@ impl<'a> WebPack4<'a> {
         symbols: SymbolTable,
         scopes: ScopeTree,
         program: &mut Program<'a>,
-    ) {
+    ) -> Webpack4Return {
         let symbol_ids = self.get_parameter_symbols_id(program);
         self.ctx.symbol_ids.insert_ids(symbol_ids);
 
@@ -418,6 +426,9 @@ impl<'a> WebPack4<'a> {
 
         let mut webpack4 = Webpack4Impl::new(&self.ctx);
         webpack4.build(program, &mut ctx);
+        Webpack4Return {
+            is_esm: self.ctx.is_esm.take(),
+        }
     }
 }
 
@@ -620,6 +631,7 @@ impl<'a, 'ctx> Traverse<'a> for Webpack4Impl<'a, 'ctx> {
             return;
         };
         if self.is_esm(&es.expression, ctx) {
+            self.ctx.is_esm.replace(true);
             *node = ctx.ast.statement_empty(es.span);
         }
     }
