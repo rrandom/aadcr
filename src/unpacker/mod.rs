@@ -313,9 +313,34 @@ impl ModuleIds {
     }
 }
 
+struct SymbolIds {
+    ids: RefCell<std::vec::Vec<SymbolId>>,
+}
+
+impl SymbolIds {
+    pub fn new() -> Self {
+        Self {
+            ids: RefCell::new(vec![]),
+        }
+    }
+
+    pub fn insert_id(&self, id: SymbolId) {
+        self.ids.borrow_mut().push(id);
+    }
+
+    pub fn insert_ids(&self, ids: std::vec::Vec<SymbolId>) {
+        self.ids.borrow_mut().extend(ids);
+    }
+
+    // pub fn iter(&self) -> impl Iterator<Item = &SymbolId> + '_  {
+    //     self.ids.borrow().iter()
+    // }
+}
+
 struct Webpack4Ctx<'a> {
     pub source_text: &'a str,
     pub module_ids: ModuleIds,
+    pub symbol_ids: SymbolIds,
 }
 
 impl<'a> Webpack4Ctx<'a> {
@@ -323,6 +348,7 @@ impl<'a> Webpack4Ctx<'a> {
         Self {
             source_text,
             module_ids: ModuleIds::new(),
+            symbol_ids: SymbolIds::new(),
         }
     }
 }
@@ -346,12 +372,7 @@ impl<'a> WebPack4<'a> {
         self.build_with_symbols_and_scopes(symbols, scopes, program);
     }
 
-    pub fn build_with_symbols_and_scopes(
-        mut self,
-        symbols: SymbolTable,
-        scopes: ScopeTree,
-        program: &mut Program<'a>,
-    ) {
+    pub fn get_parameter_symbols_id(&self, program: &Program<'a>) -> std::vec::Vec<SymbolId> {
         let mut symbol_ids = vec![];
         match &program.body[0] {
             Statement::ExpressionStatement(es) => match &es.expression {
@@ -373,9 +394,21 @@ impl<'a> WebPack4<'a> {
                 unreachable!();
             }
         }
+        symbol_ids
+    }
+
+    pub fn build_with_symbols_and_scopes(
+        mut self,
+        symbols: SymbolTable,
+        scopes: ScopeTree,
+        program: &mut Program<'a>,
+    ) {
+        let symbol_ids = self.get_parameter_symbols_id(program);
+        self.ctx.symbol_ids.insert_ids(symbol_ids);
+
         let mut ctx = TraverseCtx::new(scopes, symbols, self.allocator);
 
-        let mut webpack4 = Webpack4Impl::new(&self.ctx, symbol_ids);
+        let mut webpack4 = Webpack4Impl::new(&self.ctx);
         webpack4.build(program, &mut ctx);
         // println!("Found: {}", webpack4.found_scope_id.is_some());
         // println!("ctx: {:?}", &self.ctx.module_ids);
@@ -386,16 +419,14 @@ struct Webpack4Impl<'a, 'ctx> {
     ctx: &'ctx Webpack4Ctx<'a>,
     found_scope_id: Option<ScopeId>,
     program_source_type: Option<SourceType>,
-    symbol_ids: std::vec::Vec<SymbolId>,
 }
 
 impl<'a, 'ctx> Webpack4Impl<'a, 'ctx> {
-    pub fn new(ctx: &'ctx Webpack4Ctx<'a>, symbol_ids: std::vec::Vec<SymbolId>) -> Self {
+    pub fn new(ctx: &'ctx Webpack4Ctx<'a>) -> Self {
         Self {
             ctx,
             found_scope_id: None,
             program_source_type: None,
-            symbol_ids,
         }
     }
 
@@ -493,7 +524,8 @@ impl<'a, 'ctx> Traverse<'a> for Webpack4Impl<'a, 'ctx> {
         let refencer = ctx.scoping.symbols().references.get(id);
         if let Some(r) = refencer {
             if let Some(s) = r.symbol_id() {
-                if let Some(index) = self.symbol_ids.iter().position(|&x| x == s) {
+                // TODO: fix self.ctx.symbol_ids.ids.borrow().iter()
+                if let Some(index) = self.ctx.symbol_ids.ids.borrow().iter().position(|&x| x == s) {
                     let new_name = match index {
                         0 => "module",
                         1 => "exports",
@@ -523,3 +555,4 @@ impl<'a, 'ctx> Traverse<'a> for Webpack4Impl<'a, 'ctx> {
     //     );
     // }
 }
+
