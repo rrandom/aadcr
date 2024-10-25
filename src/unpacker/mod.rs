@@ -483,15 +483,13 @@ impl<'a> Webpack4Impl<'a, '_> {
 }
 
 impl<'a, 'ctx> Traverse<'a> for Webpack4Impl<'a, 'ctx> {
-    // fn enter_program(&mut self, program: &mut Program<'a>, ctx: &mut TraverseCtx<'a>) {
-    //     println!("enter program");
-    //     self.program_source_type = Some(program.source_type);
-    //     let _program_directives = Some(&program.directives);
-    // }
+    fn enter_program(&mut self, program: &mut Program<'a>, ctx: &mut TraverseCtx<'a>) {
+        println!("enter program");
+    }
 
-    // fn exit_program(&mut self, program: &mut Program<'a>, ctx: &mut TraverseCtx<'a>) {
-    //     println!("exit program");
-    // }
+    fn exit_program(&mut self, program: &mut Program<'a>, ctx: &mut TraverseCtx<'a>) {
+        println!("exit program");
+    }
 
     // fn enter_call_expression(
     //     &mut self,
@@ -528,40 +526,6 @@ impl<'a, 'ctx> Traverse<'a> for Webpack4Impl<'a, 'ctx> {
     //     }
     // }
 
-    // fn enter_assignment_expression(
-    //     &mut self,
-    //     assign_expr: &mut AssignmentExpression<'a>,
-    //     ctx: &mut TraverseCtx<'a>,
-    // ) {
-    //     match (self.found_scope_id, assign_expr) {
-    //         (
-    //             Some(factory_scope_id),
-    //             AssignmentExpression {
-    //                 left: AssignmentTarget::StaticMemberExpression(mem),
-    //                 right: Expression::NumericLiteral(val),
-    //                 ..
-    //             },
-    //         ) => {
-    //             if mem.object.is_identifier_reference()
-    //                 && mem.property.name.as_str() == "s"
-    //                 && ctx.ancestor_scopes().any(|id| id == factory_scope_id)
-    //             {
-    //                 self.ctx.module_ids.insert_id(val.value as usize);
-    //                 println!(
-    //                     "{:?}, {}, {:?}, {:?}\n {:?}, {:?}",
-    //                     mem,
-    //                     val.value,
-    //                     ctx.current_scope_id(),
-    //                     ctx.scopes().get_bindings(ctx.current_scope_id()),
-    //                     ctx.scopes().get_bindings(self.found_scope_id.unwrap()),
-    //                     ctx.ancestor_scopes().collect::<std::vec::Vec<_>>()
-    //                 );
-    //             }
-    //         }
-    //         _ => {}
-    //     }
-    // }
-
     fn enter_identifier_reference(
         &mut self,
         idf: &mut oxc_ast::ast::IdentifierReference<'a>,
@@ -584,39 +548,6 @@ impl<'a, 'ctx> Traverse<'a> for Webpack4Impl<'a, 'ctx> {
         ctx: &mut TraverseCtx<'a>,
     ) {
         println!("call_expr: {:?}", call_expr);
-        // let is_esm = match &call_expr.callee {
-        //     Expression::StaticMemberExpression(mem) => match (&mem.object, &mem.property) {
-        //         (
-        //             Expression::Identifier(idf),
-        //             IdentifierName {
-        //                 name: property_name,
-        //                 ..
-        //             },
-        //         ) => {
-        //             if property_name.as_str() == "r" {
-        //                 if let Some(id) = idf.reference_id.get() {
-        //                     if let Some(index) = self.get_reference_index(id, ctx) {
-        //                         index == 2
-        //                     } else {
-        //                         false
-        //                     }
-        //                 } else {
-        //                     false
-        //                 }
-        //             } else {
-        //                 false
-        //             }
-        //         }
-        //         _ => false,
-        //     },
-        //     _ => false,
-        // };
-
-        // println!("is_ESM: {}", is_esm);
-
-        // if is_esm {
-        //     // TO-DO: replace with void_0
-        // }
     }
 
     fn enter_expression(&mut self, expr: &mut Expression<'a>, ctx: &mut TraverseCtx<'a>) {
