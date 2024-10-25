@@ -10,7 +10,7 @@ use oxc_allocator::{Allocator, Vec};
 use oxc_allocator::{Box, CloneIn};
 use oxc_ast::ast::{
     Argument, AssignmentTarget, BindingIdentifier, BindingPatternKind, Function, IdentifierName,
-    Statement, StaticMemberExpression, UnaryExpression,
+    ReturnStatement, Statement, StaticMemberExpression, UnaryExpression,
 };
 use oxc_ast::AstBuilder;
 use oxc_ast::{
@@ -347,11 +347,29 @@ impl SymbolIds {
     }
 }
 
+// a export is a return statement argument or a identifier reference
+struct ModuleExportsStore<'a> {
+    pub exports: RefCell<FxHashMap<Atom<'a>, Expression<'a>>>,
+}
+
+impl<'a> ModuleExportsStore<'a> {
+    pub fn new() -> Self {
+        Self {
+            exports: RefCell::new(FxHashMap::default()),
+        }
+    }
+
+    pub fn insert_export(&self, name: Atom<'a>, expr: Expression<'a>) {
+        self.exports.borrow_mut().insert(name, expr);
+    }
+}
+
 struct Webpack4Ctx<'a> {
     pub source_text: &'a str,
     pub module_ids: ModuleIds,
     pub symbol_ids: SymbolIds,
     pub is_esm: RefCell<bool>,
+    pub module_exports: ModuleExportsStore<'a>,
 }
 
 impl<'a> Webpack4Ctx<'a> {
@@ -361,6 +379,7 @@ impl<'a> Webpack4Ctx<'a> {
             module_ids: ModuleIds::new(),
             symbol_ids: SymbolIds::new(),
             is_esm: RefCell::new(false),
+            module_exports: ModuleExportsStore::new(),
         }
     }
 }
@@ -489,46 +508,52 @@ impl<'a> Webpack4Impl<'a, '_> {
     // require.d(exports, "a", function() {
     //     return moduleContent;
     // })
-    fn is_require_d(&self, expr: &Expression<'a>, ctx: &TraverseCtx<'a>) -> bool {
+    fn get_require_d<'b>(
+        &self,
+        expr: &'b Expression<'a>,
+        ctx: &TraverseCtx<'a>,
+    ) -> Option<(Atom<'a>, &'b Expression<'a>)> {
         let Expression::CallExpression(call_expr) = expr else {
-            return false;
+            return None;
         };
         let Expression::StaticMemberExpression(mem) = &call_expr.callee else {
-            return false;
+            return None;
         };
         let (Expression::Identifier(idf), IdentifierName { name, .. }) =
             (&mem.object, &mem.property)
         else {
-            return false;
+            return None;
         };
         if name.as_str() != "d" {
-            return false;
-        }
+            return None;
+        };
         let Some(id) = idf.reference_id.get() else {
-            return false;
+            return None;
         };
-        let Some(index) = self.get_reference_index(id, ctx) else {
-            return false;
+        let Some(2) = self.get_reference_index(id, ctx) else {
+            return None;
         };
-        if index != 2 {
-            return false;
-        }
+
         if call_expr.arguments.len() != 3 {
-            return false;
-        }
-        let (Some(arg0), Some(arg1), Some(arg2)) = (
-            call_expr.arguments.get(0),
-            call_expr.arguments.get(1),
-            call_expr.arguments.get(2),
-        ) else {
-            return false;
+            return None;
         };
-        let (Argument::Identifier(_), Argument::StringLiteral(_), Argument::FunctionExpression(_)) =
-            (arg0, arg1, arg2)
+        let [Argument::Identifier(_), Argument::StringLiteral(name), Argument::FunctionExpression(f)] =
+            call_expr.arguments.as_slice()
         else {
-            return false;
+            return None;
         };
-        true
+        let Some(fb) = &f.body else { return None };
+        if fb.statements.len() != 1 {
+            return None;
+        };
+        let Statement::ReturnStatement(ret) = &fb.statements[0] else {
+            return None;
+        };
+        let Some(arg) = &ret.argument else {
+            return None;
+        };
+
+        Some((name.value.clone(), arg))
     }
 }
 
@@ -539,42 +564,11 @@ impl<'a, 'ctx> Traverse<'a> for Webpack4Impl<'a, 'ctx> {
 
     fn exit_program(&mut self, program: &mut Program<'a>, ctx: &mut TraverseCtx<'a>) {
         println!("exit program");
+        println!(
+            "module exports: {:?}",
+            self.ctx.module_exports.exports.borrow()
+        );
     }
-
-    // fn enter_call_expression(
-    //     &mut self,
-    //     call_expr: &mut oxc_ast::ast::CallExpression<'a>,
-    //     ctx: &mut TraverseCtx<'a>,
-    // ) {
-    //     if call_expr.arguments.len() == 1 {
-    //         if let Some(Expression::ArrayExpression(args)) = call_expr.arguments[0].as_expression()
-    //         {
-    //             let all_is_fun = args
-    //                 .elements
-    //                 .iter()
-    //                 .all(|arg| matches!(arg, ArrayExpressionElement::FunctionExpression(_)));
-    //             if all_is_fun {
-    //                 self.found_scope_id = Some(ctx.current_scope_id());
-    //                 println!("{:?}", ctx.current_scope_id());
-    //                 for arg in args.elements.iter() {
-    //                     match arg {
-    //                         ArrayExpressionElement::FunctionExpression(fe) => {
-    //                             for param in fe.params.items.iter() {
-    //                                 match &param.pattern.kind {
-    //                                     BindingPatternKind::BindingIdentifier(s) => {
-    //                                         println!("bd: {:?}", s);
-    //                                     }
-    //                                     _ => {}
-    //                                 }
-    //                             }
-    //                         }
-    //                         _ => {}
-    //                     }
-    //                 }
-    //             }
-    //         }
-    //     }
-    // }
 
     fn enter_identifier_reference(
         &mut self,
@@ -616,8 +610,13 @@ impl<'a, 'ctx> Traverse<'a> for Webpack4Impl<'a, 'ctx> {
         if self.is_esm(expr, ctx) {
             self.ctx.is_esm.replace(true);
             *node = ctx.ast.statement_empty(es_span);
-        } else if self.is_require_d(expr, ctx) {
+        } else if let Some((name, arg)) = self.get_require_d(expr, ctx) {
             println!("is require_d: {:?}", expr);
+            self.ctx
+                .module_exports
+                .insert_export(name, arg.clone_in(ctx.ast.allocator));
+
+            *node = ctx.ast.statement_empty(es_span);
         }
     }
 }
