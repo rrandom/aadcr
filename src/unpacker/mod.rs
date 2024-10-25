@@ -1,6 +1,7 @@
 use std::any::Any;
 use std::borrow::{Borrow, BorrowMut};
 use std::cell::{Ref, RefCell};
+use std::mem;
 use std::vec;
 
 use oxc_span::GetSpan;
@@ -8,8 +9,8 @@ use oxc_span::GetSpan;
 use oxc_allocator::{Allocator, Vec};
 use oxc_allocator::{Box, CloneIn};
 use oxc_ast::ast::{
-    AssignmentTarget, BindingIdentifier, BindingPatternKind, Function, IdentifierName, Statement,
-    StaticMemberExpression, UnaryExpression,
+    Argument, AssignmentTarget, BindingIdentifier, BindingPatternKind, Function, IdentifierName,
+    Statement, StaticMemberExpression, UnaryExpression,
 };
 use oxc_ast::AstBuilder;
 use oxc_ast::{
@@ -460,6 +461,8 @@ impl<'a> Webpack4Impl<'a, '_> {
         None
     }
 
+    // require.r exists
+    // require.r is a webpack4 helper function defines `__esModule` an exports object
     fn is_esm(&self, expr: &Expression<'a>, ctx: &TraverseCtx<'a>) -> bool {
         let Expression::CallExpression(call_expr) = expr else {
             return false;
@@ -479,6 +482,53 @@ impl<'a> Webpack4Impl<'a, '_> {
             return false;
         };
         name.as_str() == "r" && index == 2
+    }
+
+    // require.d is a helper function defines getter functions for harmony exports, which convert esm exports to cjs
+    // example:
+    // require.d(exports, "a", function() {
+    //     return moduleContent;
+    // })
+    fn is_require_d(&self, expr: &Expression<'a>, ctx: &TraverseCtx<'a>) -> bool {
+        let Expression::CallExpression(call_expr) = expr else {
+            return false;
+        };
+        let Expression::StaticMemberExpression(mem) = &call_expr.callee else {
+            return false;
+        };
+        let (Expression::Identifier(idf), IdentifierName { name, .. }) =
+            (&mem.object, &mem.property)
+        else {
+            return false;
+        };
+        if name.as_str() != "d" {
+            return false;
+        }
+        let Some(id) = idf.reference_id.get() else {
+            return false;
+        };
+        let Some(index) = self.get_reference_index(id, ctx) else {
+            return false;
+        };
+        if index != 2 {
+            return false;
+        }
+        if call_expr.arguments.len() != 3 {
+            return false;
+        }
+        let (Some(arg0), Some(arg1), Some(arg2)) = (
+            call_expr.arguments.get(0),
+            call_expr.arguments.get(1),
+            call_expr.arguments.get(2),
+        ) else {
+            return false;
+        };
+        let (Argument::Identifier(_), Argument::StringLiteral(_), Argument::FunctionExpression(_)) =
+            (arg0, arg1, arg2)
+        else {
+            return false;
+        };
+        true
     }
 }
 
@@ -547,7 +597,7 @@ impl<'a, 'ctx> Traverse<'a> for Webpack4Impl<'a, 'ctx> {
         call_expr: &mut oxc_ast::ast::CallExpression<'a>,
         ctx: &mut TraverseCtx<'a>,
     ) {
-        println!("call_expr: {:?}", call_expr);
+        // println!("call_expr: {:?}", call_expr);
     }
 
     fn enter_expression(&mut self, expr: &mut Expression<'a>, ctx: &mut TraverseCtx<'a>) {
@@ -561,9 +611,13 @@ impl<'a, 'ctx> Traverse<'a> for Webpack4Impl<'a, 'ctx> {
         let Statement::ExpressionStatement(es) = node else {
             return;
         };
-        if self.is_esm(&es.expression, ctx) {
+        let expr = &es.expression;
+        let es_span = es.span;
+        if self.is_esm(expr, ctx) {
             self.ctx.is_esm.replace(true);
-            *node = ctx.ast.statement_empty(es.span);
+            *node = ctx.ast.statement_empty(es_span);
+        } else if self.is_require_d(expr, ctx) {
+            println!("is require_d: {:?}", expr);
         }
     }
 }
