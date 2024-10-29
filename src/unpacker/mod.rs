@@ -132,27 +132,25 @@ pub fn get_modules_form_webpack4(allocator: &Allocator, program: &Program) -> Op
                     } else {
                         rec = ancestor_id.unwrap();
                     }
-                    // println!("aa: {:?}", ancestor_id);
                 }
                 if factory_arg_ele_id == rec {
                     println!("Got!");
                     module_fun_ids.push(node.id());
 
-                    // println!("{:#?}", node);
                     for param in fun.params.items.iter() {
-                        if let BindingPatternKind::BindingIdentifier(s) = &param.pattern.kind {
+                        if let BindingPatternKind::BindingIdentifier(param) = &param.pattern.kind {
                             println!(
                                 "Fun: {:?} => bd: {:?}, {:?}",
                                 node.id(),
-                                s.name,
-                                s.symbol_id
+                                param.name,
+                                param.symbol_id
                             );
 
-                            let x = module_funs
+                            let fun_entry = module_funs
                                 .entry(node.id())
                                 .or_default(); // 确保获取到 Vec<SymbolId>
-                            let sid = s.symbol_id.get().unwrap();
-                            x.push(sid); // 现在可以安全地调用 push
+                            let sid = param.symbol_id.get().unwrap();
+                            fun_entry.push(sid); // 现在可以安全地调用 push
                         }
                     }
                 }
@@ -196,12 +194,15 @@ pub fn get_modules_form_webpack4(allocator: &Allocator, program: &Program) -> Op
             _ => unreachable!(),
         }
         println!("ret: {:?}", ret);
+        println!("program: {:#?}", program);
         let module_str = CodeGenerator::new().build(&program).code;
 
         // println!("{:#?}", &program);
 
         println!("Program===>:\n {}", module_str);
     }
+
+    return None;
 
     if factory_id == NodeId::DUMMY {
         None
