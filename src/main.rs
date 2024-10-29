@@ -1,7 +1,6 @@
 #![allow(clippy::print_stdout)]
 mod unpacker;
 
-use core::alloc;
 use std::{env, path::Path};
 
 use oxc_allocator::Allocator;
@@ -12,7 +11,7 @@ use oxc_span::SourceType;
 // use oxc_transformer::{EnvOptions, Targets, TransformOptions, Transformer};
 use pico_args::Arguments;
 
-use unpacker::{get_modules_form_webpack4, get_modules_form_webpack4_deprecated};
+use unpacker::get_modules_form_webpack4;
 
 fn main() {
     let mut args = Arguments::from_env();

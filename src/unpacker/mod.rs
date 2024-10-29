@@ -1,7 +1,5 @@
-use std::any::Any;
 use std::borrow::{Borrow, BorrowMut};
-use std::cell::{Ref, RefCell};
-use std::mem;
+use std::cell::RefCell;
 use std::vec;
 
 use oxc_span::GetSpan;
@@ -9,23 +7,22 @@ use oxc_span::GetSpan;
 use oxc_allocator::{Allocator, Vec};
 use oxc_allocator::{Box, CloneIn};
 use oxc_ast::ast::{
-    Argument, AssignmentTarget, BindingIdentifier, BindingPatternKind, Function, IdentifierName, ImportOrExportKind, ReturnStatement, Statement, StaticMemberExpression, TSTypeAnnotation, UnaryExpression, VariableDeclarationKind, WithClause
+    Argument, BindingPatternKind, IdentifierName, ImportOrExportKind, Statement, TSTypeAnnotation, VariableDeclarationKind, WithClause
 };
 use oxc_ast::AstBuilder;
 use oxc_ast::{
     ast::{
-        ArrayExpressionElement, AssignmentExpression, Directive, Expression, FormalParameter,
-        FunctionBody, MemberExpression, NumericLiteral, Program,
+        ArrayExpressionElement, AssignmentExpression, Expression, MemberExpression, Program,
     },
     AstKind,
 };
 use oxc_codegen::CodeGenerator;
 use oxc_semantic::{
-    NodeId, Reference, ReferenceId, ScopeId, ScopeTree, Semantic, SemanticBuilder, SymbolId,
+    NodeId, ReferenceId, ScopeTree, SemanticBuilder, SymbolId,
     SymbolTable,
 };
-use oxc_span::{Atom, SourceType, Span};
-use oxc_traverse::{Ancestor, Traverse, TraverseCtx};
+use oxc_span::{Atom, Span};
+use oxc_traverse::{Traverse, TraverseCtx};
 
 use rustc_hash::FxHashMap;
 
@@ -39,7 +36,7 @@ pub fn get_modules_form_webpack4(allocator: &Allocator, program: &Program) -> Op
     let mut factory_arg_id = NodeId::DUMMY;
     let mut factory_arg_ele_id = NodeId::DUMMY;
 
-    let mut entry_ids = Vec::new_in(&allocator);
+    let mut entry_ids = Vec::new_in(allocator);
     let mut arr_expr = None;
     let mut program_source_type = None;
     let mut program_directives = None;
@@ -143,22 +140,19 @@ pub fn get_modules_form_webpack4(allocator: &Allocator, program: &Program) -> Op
 
                     // println!("{:#?}", node);
                     for param in fun.params.items.iter() {
-                        match &param.pattern.kind {
-                            BindingPatternKind::BindingIdentifier(s) => {
-                                println!(
-                                    "Fun: {:?} => bd: {:?}, {:?}",
-                                    node.id(),
-                                    s.name,
-                                    s.symbol_id
-                                );
+                        if let BindingPatternKind::BindingIdentifier(s) = &param.pattern.kind {
+                            println!(
+                                "Fun: {:?} => bd: {:?}, {:?}",
+                                node.id(),
+                                s.name,
+                                s.symbol_id
+                            );
 
-                                let x = module_funs
-                                    .entry(node.id())
-                                    .or_insert_with(std::vec::Vec::new); // 确保获取到 Vec<SymbolId>
-                                let sid = s.symbol_id.get().unwrap();
-                                x.push(sid); // 现在可以安全地调用 push
-                            }
-                            _ => {}
+                            let x = module_funs
+                                .entry(node.id())
+                                .or_default(); // 确保获取到 Vec<SymbolId>
+                            let sid = s.symbol_id.get().unwrap();
+                            x.push(sid); // 现在可以安全地调用 push
                         }
                     }
                 }
@@ -174,7 +168,7 @@ pub fn get_modules_form_webpack4(allocator: &Allocator, program: &Program) -> Op
 
     for fun_id in module_fun_ids {
         let f1 = nodes.get_node(fun_id).kind().as_function().unwrap();
-        let mut newf = f1.clone_in(&allocator);
+        let newf = f1.clone_in(allocator);
 
         // println!("{:#?}", newf);
 
@@ -183,7 +177,7 @@ pub fn get_modules_form_webpack4(allocator: &Allocator, program: &Program) -> Op
 
         let mut program = ast.program(
             Span::default(),
-            program_source_type.unwrap().clone_in(&allocator),
+            program_source_type.unwrap().clone_in(allocator),
             None,
             ast.vec(),
             ast.vec1(st),
@@ -195,7 +189,7 @@ pub fn get_modules_form_webpack4(allocator: &Allocator, program: &Program) -> Op
             Statement::ExpressionStatement(es) => {
                 if let Expression::FunctionExpression(f) = &es.expression {
                     if let Some(body) = &f.body {
-                        program.body = body.statements.clone_in(&allocator);
+                        program.body = body.statements.clone_in(allocator);
                     }
                 }
             }
@@ -234,7 +228,7 @@ pub fn get_modules_form_webpack4(allocator: &Allocator, program: &Program) -> Op
                 //     symbol_table.set_name(id, new_name.into());
                 // }
 
-                let mut function_expr1 = function_expr.clone_in(&allocator);
+                let function_expr1 = function_expr.clone_in(allocator);
 
                 // let st = Statement::ExpressionStatement(e.as_expression());
 
@@ -243,18 +237,18 @@ pub fn get_modules_form_webpack4(allocator: &Allocator, program: &Program) -> Op
 
                 let k = ast.statement_expression(
                     function_expr1.span,
-                    e.as_expression().unwrap().clone_in(&allocator),
+                    e.as_expression().unwrap().clone_in(allocator),
                 );
 
-                let mut body = Vec::new_in(&allocator);
+                let mut body = Vec::new_in(allocator);
 
                 body.push(k);
 
-                let mut new_program = Program::new(
-                    function_expr.span.clone_in(&allocator),
-                    program_source_type.unwrap().clone_in(&allocator),
+                let new_program = Program::new(
+                    function_expr.span.clone_in(allocator),
+                    program_source_type.unwrap().clone_in(allocator),
                     // fun.directives.clone_in(&allocator),
-                    Vec::new_in(&allocator),
+                    Vec::new_in(allocator),
                     None,
                     body,
                 );
@@ -268,19 +262,19 @@ pub fn get_modules_form_webpack4(allocator: &Allocator, program: &Program) -> Op
                     // let directives = fun.directives;
                     // let statements = fun.statements;
 
-                    let mut directives = fun_body.directives.clone_in(&allocator);
+                    let mut directives = fun_body.directives.clone_in(allocator);
                     if let Some(d) = program_directives {
-                        let mut p = d.clone_in(&allocator);
+                        let mut p = d.clone_in(allocator);
                         directives.append(&mut p);
                     }
 
                     let program = Program::new(
-                        fun_body.span.clone_in(&allocator),
-                        program_source_type.unwrap().clone_in(&allocator),
+                        fun_body.span.clone_in(allocator),
+                        program_source_type.unwrap().clone_in(allocator),
                         // fun.directives.clone_in(&allocator),
                         directives,
                         None,
-                        fun_body.statements.clone_in(&allocator),
+                        fun_body.statements.clone_in(allocator),
                     );
 
                     let printed = CodeGenerator::new().build(&program).code;
@@ -399,7 +393,7 @@ impl<'a> WebPack4<'a> {
         Self { allocator, ctx }
     }
 
-    pub fn build(mut self, program: &mut Program<'a>) -> Webpack4Return {
+    pub fn build(self, program: &mut Program<'a>) -> Webpack4Return {
         let (symbols, scopes) = SemanticBuilder::new("")
             .build(program)
             .semantic
@@ -433,7 +427,7 @@ impl<'a> WebPack4<'a> {
     }
 
     pub fn build_with_symbols_and_scopes(
-        mut self,
+        self,
         symbols: SymbolTable,
         scopes: ScopeTree,
         program: &mut Program<'a>,
@@ -556,7 +550,7 @@ impl<'a> Webpack4Impl<'a, '_> {
     }
 }
 
-impl<'a, 'ctx> Traverse<'a> for Webpack4Impl<'a, 'ctx> {
+impl<'a> Traverse<'a> for Webpack4Impl<'a, '_> {
     fn enter_program(&mut self, program: &mut Program<'a>, ctx: &mut TraverseCtx<'a>) {
         println!("enter program");
     }
