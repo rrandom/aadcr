@@ -180,121 +180,32 @@ pub fn get_modules_form_webpack4(allocator: &Allocator, program: &Program) -> Op
             ast.vec(),
             ast.vec1(st),
         );
+        // TO-DO: implement function renamer here.
 
         let ret = WebPack4::new(allocator, "").build(&mut program);
 
-        match &program.body[0] {
-            Statement::ExpressionStatement(es) => {
-                if let Expression::FunctionExpression(f) = &es.expression {
-                    if let Some(body) = &f.body {
-                        program.body = body.statements.clone_in(allocator);
-                    }
-                }
-            }
-            _ => unreachable!(),
-        }
-        println!("ret: {:?}", ret);
-        println!("program: {:#?}", program);
-        let module_str = CodeGenerator::new().build(&program).code;
+        // match &program.body[0] {
+        //     Statement::ExpressionStatement(es) => {
+        //         if let Expression::FunctionExpression(f) = &es.expression {
+        //             if let Some(body) = &f.body {
+        //                 program.body= body.statements.clone_in(allocator);
+        //             }
+        //         }
+        //     }
+        //     _ => unreachable!(),
+        // }
 
-        // println!("{:#?}", &program);
+        // program.body.splice(0..1, vec![]);
+        // program.body.drain(0..1);
+        println!("ret: {:?}", ret);
+        let module_str = CodeGenerator::new().build(&program).code;
 
         println!("Program===>:\n {}", module_str);
     }
 
     return None;
-
-    if factory_id == NodeId::DUMMY {
-        None
-    } else {
-        let module_factory = nodes.get_node(factory_id);
-
-        for (module_id, e) in arr_expr.unwrap().elements.iter().enumerate() {
-            // println!("Fun: {} ==: {:?}", module_id, e);
-
-            if let Some(Expression::FunctionExpression(function_expr)) = e.as_expression() {
-                let scope_id = &function_expr.scope_id;
-                // dbg!(&scope_id);
-                // dbg!(&function_expr.params);
-
-                // for (it, new_name) in function_expr
-                //     .params
-                //     .items
-                //     .iter()
-                //     .zip(["module", "exports", "require"])
-                // {
-                //     let FormalParameter { pattern, .. } = it;
-                //     let bd = pattern.get_binding_identifier().unwrap();
-                //     let id = bd.symbol_id.get().unwrap();
-                //     symbol_table.set_name(id, new_name.into());
-                // }
-
-                let function_expr1 = function_expr.clone_in(allocator);
-
-                // let st = Statement::ExpressionStatement(e.as_expression());
-
-                let ast = AstBuilder::new(allocator);
-                // ast.program(span, source_type, hashbang, directives, body)
-
-                let k = ast.statement_expression(
-                    function_expr1.span,
-                    e.as_expression().unwrap().clone_in(allocator),
-                );
-
-                let mut body = Vec::new_in(allocator);
-
-                body.push(k);
-
-                let new_program = Program::new(
-                    function_expr.span.clone_in(allocator),
-                    program_source_type.unwrap().clone_in(allocator),
-                    // fun.directives.clone_in(&allocator),
-                    Vec::new_in(allocator),
-                    None,
-                    body,
-                );
-
-                let semantic = SemanticBuilder::new("").build(&new_program).semantic;
-
-                // require_helper(&allocator, &mut new_program);
-
-                // println!("is fun {:?}", function_expr);
-                if let Some(fun_body) = &function_expr.body {
-                    // let directives = fun.directives;
-                    // let statements = fun.statements;
-
-                    let mut directives = fun_body.directives.clone_in(allocator);
-                    if let Some(d) = program_directives {
-                        let mut p = d.clone_in(allocator);
-                        directives.append(&mut p);
-                    }
-
-                    let program = Program::new(
-                        fun_body.span.clone_in(allocator),
-                        program_source_type.unwrap().clone_in(allocator),
-                        // fun.directives.clone_in(&allocator),
-                        directives,
-                        None,
-                        fun_body.statements.clone_in(allocator),
-                    );
-
-                    let printed = CodeGenerator::new().build(&program).code;
-                    println!("program ===>: {:?}", printed);
-                }
-            }
-        }
-        None
-    }
 }
 
-pub fn get_modules_form_webpack4_deprecated<'a>(
-    allocator: &'a Allocator,
-    program: &mut Program<'a>,
-    source_text: &'a str,
-) -> Option<Module> {
-    WebPack4::new(allocator, source_text).build(program);
-    None
-}
 #[derive(Debug)]
 struct ModuleIds {
     ids: RefCell<std::vec::Vec<usize>>,
