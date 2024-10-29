@@ -9,8 +9,7 @@ use oxc_span::GetSpan;
 use oxc_allocator::{Allocator, Vec};
 use oxc_allocator::{Box, CloneIn};
 use oxc_ast::ast::{
-    Argument, AssignmentTarget, BindingIdentifier, BindingPatternKind, Function, IdentifierName,
-    ReturnStatement, Statement, StaticMemberExpression, UnaryExpression,
+    Argument, AssignmentTarget, BindingIdentifier, BindingPatternKind, Function, IdentifierName, ImportOrExportKind, ReturnStatement, Statement, StaticMemberExpression, TSTypeAnnotation, UnaryExpression, VariableDeclarationKind, WithClause
 };
 use oxc_ast::AstBuilder;
 use oxc_ast::{
@@ -568,6 +567,55 @@ impl<'a, 'ctx> Traverse<'a> for Webpack4Impl<'a, 'ctx> {
             "module exports: {:?}",
             self.ctx.module_exports.exports.borrow()
         );
+        if *self.ctx.is_esm.borrow() {
+            println!("is esm: {:?}", self.ctx.is_esm.borrow());
+            self.ctx
+                .module_exports
+                .exports
+                .borrow()
+                .iter()
+                .for_each(|(k, v)| {
+                    println!("export: {:?} => {:?}", k, v);
+                    let bindingidkind = ctx.ast.binding_pattern_kind_binding_identifier(
+                        Span::default(),
+                        k.clone_in(ctx.ast.allocator),
+                    );
+                    let bd = ctx
+                        .ast
+                        .binding_pattern(
+                        bindingidkind,
+                        None::<Box<TSTypeAnnotation<'a>>>,
+                        false,
+                    );
+                    let de = ctx.ast.variable_declarator(
+                        v.span(),
+                        VariableDeclarationKind::Const,
+                        bd, 
+                        Some(v.clone_in(ctx.ast.allocator)),
+                        false,
+                    );
+                    let de = ctx.ast.variable_declaration(
+                        v.span(),
+                        VariableDeclarationKind::Const,
+                        ctx.ast.vec1(de),
+                        false,
+                    );
+                    let de = ctx.ast.declaration_from_variable(de);
+                    let st = ctx.ast.alloc_export_named_declaration(
+                        v.span(),
+                        Some(de),
+                        ctx.ast.vec(),
+                        None,
+                        ImportOrExportKind::Value,
+                        None::<WithClause<'a>>,
+                    );
+                    let st = Statement::ExportNamedDeclaration(st);
+                    program.body.push(st);
+                    // println!("st: {:#?}", program.body);
+                });
+        } else {
+            println!("is not esm");
+        }
     }
 
     fn enter_identifier_reference(
@@ -602,6 +650,7 @@ impl<'a, 'ctx> Traverse<'a> for Webpack4Impl<'a, 'ctx> {
     }
 
     fn enter_statement(&mut self, node: &mut Statement<'a>, ctx: &mut TraverseCtx<'a>) {
+        println!("enter statement: {:?}", node);
         let Statement::ExpressionStatement(es) = node else {
             return;
         };
