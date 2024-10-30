@@ -1,24 +1,30 @@
 use rustc_hash::FxHashMap;
 use std::cell::RefCell;
 
-use oxc_allocator::{Allocator, Vec};
-use oxc_allocator::{Box, CloneIn};
+use oxc_allocator::{Allocator, Box, CloneIn};
 use oxc_ast::{
     ast::{
-        Argument, ArrayExpressionElement, AssignmentExpression, BindingPatternKind, Expression,
-        IdentifierName, IdentifierReference, ImportOrExportKind, MemberExpression, Program,
-        Statement, TSTypeAnnotation, VariableDeclarationKind, WithClause,
+        Argument, ArrayExpressionElement, AssignmentExpression, AssignmentOperator,
+        BindingPatternKind, Expression, IdentifierName, IdentifierReference, ImportOrExportKind,
+        MemberExpression, Program, PropertyKind, Statement, TSTypeAnnotation,
+        VariableDeclarationKind, WithClause,
     },
     AstBuilder, AstKind,
 };
-use oxc_codegen::CodeGenerator;
 use oxc_semantic::{NodeId, ScopeTree, SemanticBuilder, SymbolId, SymbolTable};
 use oxc_span::{Atom, GetSpan, Span};
 use oxc_traverse::{Traverse, TraverseCtx};
 
-pub struct Module {}
+pub struct Module<'a> {
+    pub id: usize,
+    pub is_entry: bool,
+    pub content: Program<'a>,
+}
 
-pub fn get_modules_form_webpack4(allocator: &Allocator, program: &Program) -> Option<Module> {
+pub fn get_modules_form_webpack4<'a>(
+    allocator: &'a Allocator,
+    program: &Program<'a>,
+) -> Option<std::vec::Vec<Module<'a>>> {
     let semantic = SemanticBuilder::new("").build(program).semantic;
 
     let mut factory_id = NodeId::DUMMY;
@@ -26,28 +32,29 @@ pub fn get_modules_form_webpack4(allocator: &Allocator, program: &Program) -> Op
     let mut factory_arg_id = NodeId::DUMMY;
     let mut factory_arg_ele_id = NodeId::DUMMY;
 
-    let mut entry_ids = Vec::new_in(allocator);
-    let mut arr_expr = None;
-    let mut program_source_type = None;
-    let mut program_directives = None;
+    let mut entry_ids = vec![];
 
     let mut module_fun_ids = vec![];
-
     let mut module_funs: FxHashMap<NodeId, std::vec::Vec<SymbolId>> = FxHashMap::default();
 
     let nodes = semantic.nodes();
+    let program_source_type = nodes
+        .root()
+        .map(|id| nodes.get_node(id).kind().as_program().unwrap().source_type);
+    let program_directives = nodes.root().map(|id| {
+        nodes
+            .get_node(id)
+            .kind()
+            .as_program()
+            .unwrap()
+            .directives
+            .clone_in(allocator)
+    });
 
     for node in nodes.iter() {
         match node.kind() {
             // TO-DO: using `.root` should work too
-            AstKind::Program(Program {
-                source_type,
-                directives,
-                ..
-            }) => {
-                program_source_type = Some(source_type);
-                program_directives = Some(directives);
-            }
+            AstKind::Program(Program { .. }) => {}
             AstKind::CallExpression(call) => {
                 if call.arguments.len() == 1 {
                     if let Expression::ArrayExpression(arr) =
@@ -58,9 +65,8 @@ pub fn get_modules_form_webpack4(allocator: &Allocator, program: &Program) -> Op
                             .iter()
                             .all(|d| matches!(d, ArrayExpressionElement::FunctionExpression(_)));
                         if all_is_fun {
-                            println!("Found? {:?}", node.id());
+                            // println!("Found? {:?}", node.id());
                             factory_id = node.id();
-                            arr_expr = Some(arr);
                         }
                     }
                 }
@@ -89,12 +95,12 @@ pub fn get_modules_form_webpack4(allocator: &Allocator, program: &Program) -> Op
                 {
                     if mm.object.is_identifier_reference() && mm.property.name.as_str() == "s" {
                         // println!("Member: {:?}", mm);
-                        println!(
-                            "assign: {} with {}",
-                            // span.source_text(semantic.source_text()),
-                            1,
-                            s.value
-                        );
+                        // println!(
+                        //     "assign: {} with {}",
+                        //     // span.source_text(semantic.source_text()),
+                        //     1,
+                        //     s.value
+                        // );
                         entry_ids.push(s.value);
                     }
                 }
@@ -124,17 +130,17 @@ pub fn get_modules_form_webpack4(allocator: &Allocator, program: &Program) -> Op
                     }
                 }
                 if factory_arg_ele_id == rec {
-                    println!("Got!");
+                    // println!("Got!");
                     module_fun_ids.push(node.id());
 
                     for param in fun.params.items.iter() {
                         if let BindingPatternKind::BindingIdentifier(param) = &param.pattern.kind {
-                            println!(
-                                "Fun: {:?} => bd: {:?}, {:?}",
-                                node.id(),
-                                param.name,
-                                param.symbol_id
-                            );
+                            // println!(
+                            //     "Fun: {:?} => bd: {:?}, {:?}",
+                            //     node.id(),
+                            //     param.name,
+                            //     param.symbol_id
+                            // );
 
                             let fun_entry = module_funs.entry(node.id()).or_default(); // 确保获取到 Vec<SymbolId>
                             let sid = param.symbol_id.get().unwrap();
@@ -152,32 +158,42 @@ pub fn get_modules_form_webpack4(allocator: &Allocator, program: &Program) -> Op
         factory_id, factory_arg_id, factory_arg_ele_id, module_fun_ids, entry_ids, module_funs
     );
 
-    for fun_id in module_fun_ids {
-        let fun = nodes.get_node(fun_id).kind().as_function().unwrap();
+    let mut modules = vec![];
+    for (module_id, fun_id) in module_fun_ids.iter().enumerate() {
+        let fun = nodes.get_node(*fun_id).kind().as_function().unwrap();
         let new_fun = fun.clone_in(allocator);
 
         let ast = AstBuilder::new(allocator);
         let st = ast.statement_expression(fun.span, ast.expression_from_function(new_fun));
 
+        let directives = program_directives
+            .clone_in(allocator)
+            .unwrap_or_else(|| ast.vec());
+
         let mut program = ast.program(
             Span::default(),
             program_source_type.unwrap().clone_in(allocator),
             None,
-            ast.vec(),
+            directives,
             ast.vec1(st),
         );
-        let mut fn_renamer = FunctionParamRenamer::new(allocator, ["module", "exports", "require"]);
-        fn_renamer.build(&mut program);
+        let mut fun_renamer =
+            FunctionParamRenamer::new(allocator, ["module", "exports", "require"]);
+        fun_renamer.build(&mut program);
 
         let ret = WebPack4::new(allocator, "").build(&mut program);
-        println!("ret: {:?}", ret);
+        // println!("ret: {:?}", ret);
 
-        let module_str = CodeGenerator::new().build(&program).code;
+        let is_entry = entry_ids.contains(&(module_id as f64));
 
-        println!("Program===>:\n {}", module_str);
+        modules.push(Module {
+            id: module_id,
+            is_entry,
+            content: program,
+        });
     }
 
-    None
+    Some(modules)
 }
 
 struct FunctionParamRenamer<'a> {
@@ -286,25 +302,10 @@ impl<'a> Traverse<'a> for FunctionParamRenamer<'a> {
             let Some(body) = &fun.body else {
                 return;
             };
+            node.directives
+                .extend(body.directives.clone_in(self.allocator));
             node.body = body.statements.clone_in(self.allocator);
         }
-    }
-}
-
-#[derive(Debug)]
-struct ModuleIds {
-    ids: RefCell<std::vec::Vec<usize>>,
-}
-
-impl ModuleIds {
-    pub fn new() -> Self {
-        Self {
-            ids: RefCell::new(vec![]),
-        }
-    }
-
-    pub fn insert_id(&self, stmt: usize) {
-        self.ids.borrow_mut().push(stmt);
     }
 }
 
@@ -327,7 +328,6 @@ impl<'a> ModuleExportsStore<'a> {
 
 struct Webpack4Ctx<'a> {
     pub source_text: &'a str,
-    pub module_ids: ModuleIds,
     pub is_esm: RefCell<bool>,
     pub module_exports: ModuleExportsStore<'a>,
 }
@@ -336,7 +336,6 @@ impl<'a> Webpack4Ctx<'a> {
     pub fn new(source_text: &'a str) -> Self {
         Self {
             source_text,
-            module_ids: ModuleIds::new(),
             is_esm: RefCell::new(false),
             module_exports: ModuleExportsStore::new(),
         }
@@ -472,23 +471,23 @@ impl<'a> Traverse<'a> for Webpack4Impl<'a, '_> {
     }
 
     fn exit_program(&mut self, program: &mut Program<'a>, ctx: &mut TraverseCtx<'a>) {
-        println!("exit program");
-        println!(
-            "module exports: {:?}",
-            self.ctx.module_exports.exports.borrow()
-        );
+        // println!("exit program");
+        // println!(
+        //     "module exports: {:?}",
+        //     self.ctx.module_exports.exports.borrow()
+        // );
         program
             .body
             .retain(|s| !matches!(s, Statement::EmptyStatement(_)));
         if *self.ctx.is_esm.borrow() {
-            println!("is esm: {:?}", self.ctx.is_esm.borrow());
+            // println!("is esm: {:?}", self.ctx.is_esm.borrow());
             self.ctx
                 .module_exports
                 .exports
                 .borrow()
                 .iter()
                 .for_each(|(k, v)| {
-                    println!("export: {:?} => {:?}", k, v);
+                    // println!("export: {:?} => {:?}", k, v);
                     let bindingidkind = ctx.ast.binding_pattern_kind_binding_identifier(
                         Span::default(),
                         k.clone_in(ctx.ast.allocator),
@@ -525,7 +524,50 @@ impl<'a> Traverse<'a> for Webpack4Impl<'a, '_> {
                     // println!("st: {:#?}", program.body);
                 });
         } else {
-            println!("is not esm");
+            if self.ctx.module_exports.exports.borrow().is_empty() {
+                return;
+            }
+
+            let properties =
+                ctx.ast
+                    .vec_from_iter(self.ctx.module_exports.exports.borrow().iter().map(
+                        |(k, v)| {
+                            return ctx.ast.object_property_kind_object_property(
+                                Span::default(),
+                                PropertyKind::Init,
+                                ctx.ast.property_key_identifier_name(
+                                    Span::default(),
+                                    k.clone_in(ctx.ast.allocator),
+                                ),
+                                v.clone_in(ctx.ast.allocator),
+                                None,
+                                false,
+                                false,
+                                false,
+                            );
+                        },
+                    ));
+
+            let inner = ctx.ast.member_expression_from_static(
+                ctx.ast.static_member_expression(
+                    Span::default(),
+                    ctx.ast
+                        .expression_identifier_reference(Span::default(), "module"),
+                    ctx.ast.identifier_name(Span::default(), "exports"),
+                    false,
+                ),
+            );
+            let inner = ctx.ast.simple_assignment_target_member_expression(inner);
+
+            let right = ctx.ast.expression_object(Span::default(), properties, None);
+            let exp = ctx.ast.expression_assignment(
+                Span::default(),
+                AssignmentOperator::Assign,
+                ctx.ast.assignment_target_simple(inner),
+                right,
+            );
+            let s = ctx.ast.statement_expression(Span::default(), exp);
+            program.body.push(s);
         }
     }
 
@@ -562,7 +604,7 @@ impl<'a> Traverse<'a> for Webpack4Impl<'a, '_> {
             self.ctx.is_esm.replace(true);
             *node = ctx.ast.statement_empty(es_span);
         } else if let Some((name, arg)) = self.get_require_d(expr, ctx) {
-            println!("is require_d: {:?}", expr);
+            // println!("is require_d: {:?}", expr);
             self.ctx
                 .module_exports
                 .insert_export(name, arg.clone_in(ctx.ast.allocator));
