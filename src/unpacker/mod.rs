@@ -1,30 +1,20 @@
-use std::borrow::{Borrow, BorrowMut};
+use rustc_hash::FxHashMap;
 use std::cell::RefCell;
-use std::vec;
-
-use oxc_span::GetSpan;
 
 use oxc_allocator::{Allocator, Vec};
 use oxc_allocator::{Box, CloneIn};
-use oxc_ast::ast::{
-    Argument, BindingPatternKind, IdentifierName, ImportOrExportKind, Statement, TSTypeAnnotation, VariableDeclarationKind, WithClause
-};
-use oxc_ast::AstBuilder;
 use oxc_ast::{
     ast::{
-        ArrayExpressionElement, AssignmentExpression, Expression, MemberExpression, Program,
+        Argument, ArrayExpressionElement, AssignmentExpression, BindingPatternKind, Expression,
+        IdentifierName, IdentifierReference, ImportOrExportKind, MemberExpression, Program,
+        Statement, TSTypeAnnotation, VariableDeclarationKind, WithClause,
     },
-    AstKind,
+    AstBuilder, AstKind,
 };
 use oxc_codegen::CodeGenerator;
-use oxc_semantic::{
-    NodeId, ReferenceId, ScopeTree, SemanticBuilder, SymbolId,
-    SymbolTable,
-};
-use oxc_span::{Atom, Span};
+use oxc_semantic::{NodeId, ScopeTree, SemanticBuilder, SymbolId, SymbolTable};
+use oxc_span::{Atom, GetSpan, Span};
 use oxc_traverse::{Traverse, TraverseCtx};
-
-use rustc_hash::FxHashMap;
 
 pub struct Module {}
 
@@ -146,9 +136,7 @@ pub fn get_modules_form_webpack4(allocator: &Allocator, program: &Program) -> Op
                                 param.symbol_id
                             );
 
-                            let fun_entry = module_funs
-                                .entry(node.id())
-                                .or_default(); // 确保获取到 Vec<SymbolId>
+                            let fun_entry = module_funs.entry(node.id()).or_default(); // 确保获取到 Vec<SymbolId>
                             let sid = param.symbol_id.get().unwrap();
                             fun_entry.push(sid); // 现在可以安全地调用 push
                         }
@@ -165,13 +153,11 @@ pub fn get_modules_form_webpack4(allocator: &Allocator, program: &Program) -> Op
     );
 
     for fun_id in module_fun_ids {
-        let f1 = nodes.get_node(fun_id).kind().as_function().unwrap();
-        let newf = f1.clone_in(allocator);
-
-        // println!("{:#?}", newf);
+        let fun = nodes.get_node(fun_id).kind().as_function().unwrap();
+        let new_fun = fun.clone_in(allocator);
 
         let ast = AstBuilder::new(allocator);
-        let st = ast.statement_expression(f1.span, ast.expression_from_function(newf));
+        let st = ast.statement_expression(fun.span, ast.expression_from_function(new_fun));
 
         let mut program = ast.program(
             Span::default(),
@@ -180,30 +166,129 @@ pub fn get_modules_form_webpack4(allocator: &Allocator, program: &Program) -> Op
             ast.vec(),
             ast.vec1(st),
         );
-        // TO-DO: implement function renamer here.
+        let mut fn_renamer = FunctionParamRenamer::new(allocator, ["module", "exports", "require"]);
+        fn_renamer.build(&mut program);
 
         let ret = WebPack4::new(allocator, "").build(&mut program);
-
-        // match &program.body[0] {
-        //     Statement::ExpressionStatement(es) => {
-        //         if let Expression::FunctionExpression(f) = &es.expression {
-        //             if let Some(body) = &f.body {
-        //                 program.body= body.statements.clone_in(allocator);
-        //             }
-        //         }
-        //     }
-        //     _ => unreachable!(),
-        // }
-
-        // program.body.splice(0..1, vec![]);
-        // program.body.drain(0..1);
         println!("ret: {:?}", ret);
+
         let module_str = CodeGenerator::new().build(&program).code;
 
         println!("Program===>:\n {}", module_str);
     }
 
-    return None;
+    None
+}
+
+struct FunctionParamRenamer<'a> {
+    allocator: &'a Allocator,
+    param_ids: RefCell<std::vec::Vec<SymbolId>>,
+    rename_to: std::vec::Vec<Atom<'a>>,
+}
+
+impl<'a> FunctionParamRenamer<'a> {
+    pub fn new(
+        allocator: &'a Allocator,
+        rename_to: impl IntoIterator<Item = impl Into<Atom<'a>>>,
+    ) -> Self {
+        Self {
+            allocator,
+            param_ids: RefCell::new(vec![]),
+            rename_to: rename_to.into_iter().map(|s| s.into()).collect(),
+        }
+    }
+
+    pub fn build(&mut self, program: &mut Program<'a>) {
+        let (symbols, scopes) = SemanticBuilder::new("")
+            .build(program)
+            .semantic
+            .into_symbol_table_and_scope_tree();
+        self.build_with_symbols_and_scopes(symbols, scopes, program)
+    }
+
+    pub fn build_with_symbols_and_scopes(
+        &mut self,
+        symbols: SymbolTable,
+        scopes: ScopeTree,
+        program: &mut Program<'a>,
+    ) {
+        let Some(symbol_ids) = self.get_parameter_symbols_id(program) else {
+            return;
+        };
+        self.param_ids.borrow_mut().extend(symbol_ids);
+
+        let mut ctx = TraverseCtx::new(scopes, symbols, self.allocator);
+
+        oxc_traverse::walk_program(self, program, &mut ctx);
+    }
+
+    pub fn get_parameter_symbols_id(
+        &self,
+        program: &Program<'a>,
+    ) -> Option<std::vec::Vec<SymbolId>> {
+        let mut symbol_ids = vec![];
+        match &program.body[0] {
+            Statement::ExpressionStatement(es) => match &es.expression {
+                Expression::FunctionExpression(f) => {
+                    for param in f.params.items.iter() {
+                        if let BindingPatternKind::BindingIdentifier(binding) = &param.pattern.kind
+                        {
+                            if let Some(symbol_id) = binding.symbol_id.get() {
+                                symbol_ids.push(symbol_id);
+                            }
+                        }
+                    }
+                }
+                _ => return None,
+            },
+            _ => return None,
+        }
+        Some(symbol_ids)
+    }
+
+    pub fn get_symbol_name(&self, id: SymbolId) -> Option<Atom<'a>> {
+        self.param_ids
+            .borrow()
+            .iter()
+            .position(|&x| x == id)
+            .map(|index| match index {
+                index if index < self.rename_to.len() => self.rename_to[index].clone(),
+                _ => unreachable!(),
+            })
+    }
+}
+
+impl<'a> Traverse<'a> for FunctionParamRenamer<'a> {
+    fn enter_identifier_reference(
+        &mut self,
+        idf: &mut IdentifierReference<'a>,
+        ctx: &mut TraverseCtx<'a>,
+    ) {
+        let Some(id) = idf.reference_id.get() else {
+            return;
+        };
+        let Some(refencer) = ctx.scoping.symbols().references.get(id) else {
+            return;
+        };
+        let Some(s) = refencer.symbol_id() else {
+            return;
+        };
+        if let Some(new_name) = self.get_symbol_name(s) {
+            idf.name = new_name;
+        }
+    }
+
+    fn exit_program(&mut self, node: &mut Program<'a>, ctx: &mut TraverseCtx<'a>) {
+        if let Statement::ExpressionStatement(exp) = &node.body[0] {
+            let Expression::FunctionExpression(fun) = &exp.expression else {
+                return;
+            };
+            let Some(body) = &fun.body else {
+                return;
+            };
+            node.body = body.statements.clone_in(self.allocator);
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -220,35 +305,6 @@ impl ModuleIds {
 
     pub fn insert_id(&self, stmt: usize) {
         self.ids.borrow_mut().push(stmt);
-    }
-}
-
-struct SymbolIds {
-    ids: RefCell<std::vec::Vec<SymbolId>>,
-}
-
-impl SymbolIds {
-    pub fn new() -> Self {
-        Self {
-            ids: RefCell::new(vec![]),
-        }
-    }
-
-    pub fn insert_ids(&self, ids: std::vec::Vec<SymbolId>) {
-        self.ids.borrow_mut().extend(ids);
-    }
-
-    pub fn get_symbol_index(&self, id: SymbolId) -> Option<usize> {
-        self.ids.borrow().iter().position(|&x| x == id)
-    }
-
-    pub fn get_symbol_name(&self, id: SymbolId) -> Option<Atom<'static>> {
-        self.get_symbol_index(id).map(|index| match index {
-            0 => "module".into(),
-            1 => "exports".into(),
-            2 => "require".into(),
-            _ => unreachable!(),
-        })
     }
 }
 
@@ -272,7 +328,6 @@ impl<'a> ModuleExportsStore<'a> {
 struct Webpack4Ctx<'a> {
     pub source_text: &'a str,
     pub module_ids: ModuleIds,
-    pub symbol_ids: SymbolIds,
     pub is_esm: RefCell<bool>,
     pub module_exports: ModuleExportsStore<'a>,
 }
@@ -282,7 +337,6 @@ impl<'a> Webpack4Ctx<'a> {
         Self {
             source_text,
             module_ids: ModuleIds::new(),
-            symbol_ids: SymbolIds::new(),
             is_esm: RefCell::new(false),
             module_exports: ModuleExportsStore::new(),
         }
@@ -313,40 +367,12 @@ impl<'a> WebPack4<'a> {
         self.build_with_symbols_and_scopes(symbols, scopes, program)
     }
 
-    pub fn get_parameter_symbols_id(&self, program: &Program<'a>) -> std::vec::Vec<SymbolId> {
-        let mut symbol_ids = vec![];
-        match &program.body[0] {
-            Statement::ExpressionStatement(es) => match &es.expression {
-                Expression::FunctionExpression(f) => {
-                    for param in f.params.items.iter() {
-                        if let BindingPatternKind::BindingIdentifier(binding) = &param.pattern.kind
-                        {
-                            if let Some(symbol_id) = binding.symbol_id.get() {
-                                symbol_ids.push(symbol_id);
-                            }
-                        }
-                    }
-                }
-                _ => {
-                    unreachable!();
-                }
-            },
-            _ => {
-                unreachable!();
-            }
-        }
-        symbol_ids
-    }
-
     pub fn build_with_symbols_and_scopes(
         self,
         symbols: SymbolTable,
         scopes: ScopeTree,
         program: &mut Program<'a>,
     ) -> Webpack4Return {
-        let symbol_ids = self.get_parameter_symbols_id(program);
-        self.ctx.symbol_ids.insert_ids(symbol_ids);
-
         let mut ctx = TraverseCtx::new(scopes, symbols, self.allocator);
 
         let mut webpack4 = Webpack4Impl::new(&self.ctx);
@@ -372,19 +398,6 @@ impl<'a, 'ctx> Webpack4Impl<'a, 'ctx> {
 }
 
 impl<'a> Webpack4Impl<'a, '_> {
-    fn get_symbol_name(&self, id: SymbolId) -> Option<Atom<'static>> {
-        self.ctx.symbol_ids.get_symbol_name(id)
-    }
-
-    fn get_reference_index(&self, id: ReferenceId, ctx: &TraverseCtx<'a>) -> Option<usize> {
-        if let Some(refencer) = ctx.scoping.symbols().references.get(id) {
-            if let Some(s) = refencer.symbol_id() {
-                return self.ctx.symbol_ids.get_symbol_index(s);
-            }
-        }
-        None
-    }
-
     // require.r exists
     // require.r is a webpack4 helper function defines `__esModule` an exports object
     fn is_esm(&self, expr: &Expression<'a>, ctx: &TraverseCtx<'a>) -> bool {
@@ -399,13 +412,7 @@ impl<'a> Webpack4Impl<'a, '_> {
         else {
             return false;
         };
-        let Some(id) = idf.reference_id.get() else {
-            return false;
-        };
-        let Some(index) = self.get_reference_index(id, ctx) else {
-            return false;
-        };
-        name.as_str() == "r" && index == 2
+        idf.name == "require" && name.as_str() == "r"
     }
 
     // require.d is a helper function defines getter functions for harmony exports, which convert esm exports to cjs
@@ -432,12 +439,9 @@ impl<'a> Webpack4Impl<'a, '_> {
         if name.as_str() != "d" {
             return None;
         };
-        let Some(id) = idf.reference_id.get() else {
+        if idf.name != "require" {
             return None;
-        };
-        let Some(2) = self.get_reference_index(id, ctx) else {
-            return None;
-        };
+        }
 
         if call_expr.arguments.len() != 3 {
             return None;
@@ -473,6 +477,9 @@ impl<'a> Traverse<'a> for Webpack4Impl<'a, '_> {
             "module exports: {:?}",
             self.ctx.module_exports.exports.borrow()
         );
+        program
+            .body
+            .retain(|s| !matches!(s, Statement::EmptyStatement(_)));
         if *self.ctx.is_esm.borrow() {
             println!("is esm: {:?}", self.ctx.is_esm.borrow());
             self.ctx
@@ -486,9 +493,7 @@ impl<'a> Traverse<'a> for Webpack4Impl<'a, '_> {
                         Span::default(),
                         k.clone_in(ctx.ast.allocator),
                     );
-                    let bd = ctx
-                        .ast
-                        .binding_pattern(
+                    let bd = ctx.ast.binding_pattern(
                         bindingidkind,
                         None::<Box<TSTypeAnnotation<'a>>>,
                         false,
@@ -496,7 +501,7 @@ impl<'a> Traverse<'a> for Webpack4Impl<'a, '_> {
                     let de = ctx.ast.variable_declarator(
                         v.span(),
                         VariableDeclarationKind::Const,
-                        bd, 
+                        bd,
                         Some(v.clone_in(ctx.ast.allocator)),
                         false,
                     );
@@ -529,15 +534,6 @@ impl<'a> Traverse<'a> for Webpack4Impl<'a, '_> {
         idf: &mut oxc_ast::ast::IdentifierReference<'a>,
         ctx: &mut TraverseCtx<'a>,
     ) {
-        if let Some(id) = idf.reference_id.get() {
-            if let Some(refencer) = ctx.scoping.symbols().references.get(id) {
-                if let Some(s) = refencer.symbol_id() {
-                    if let Some(new_name) = self.get_symbol_name(s) {
-                        idf.name = new_name;
-                    }
-                }
-            }
-        }
     }
 
     fn enter_call_expression(
@@ -556,7 +552,7 @@ impl<'a> Traverse<'a> for Webpack4Impl<'a, '_> {
     }
 
     fn enter_statement(&mut self, node: &mut Statement<'a>, ctx: &mut TraverseCtx<'a>) {
-        println!("enter statement: {:?}", node);
+        // println!("enter statement: {:?}", node);
         let Statement::ExpressionStatement(es) = node else {
             return;
         };
