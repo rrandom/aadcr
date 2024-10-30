@@ -521,7 +521,6 @@ impl<'a> Traverse<'a> for Webpack4Impl<'a, '_> {
                     );
                     let st = Statement::ExportNamedDeclaration(st);
                     program.body.push(st);
-                    // println!("st: {:#?}", program.body);
                 });
         } else {
             if self.ctx.module_exports.exports.borrow().is_empty() {
