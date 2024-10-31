@@ -106,6 +106,7 @@ pub fn get_modules_form_webpack4<'a>(
                             println!("arr len: {:?}", arr.elements.len());
                             for fun in arr.elements.iter() {
                                 if let ArrayExpressionElement::FunctionExpression(fun) = fun {
+                                    println!("fun: {:#?}", fun);
                                     module_funs.push(fun);
                                 }
                             }
@@ -593,12 +594,12 @@ impl<'a> Traverse<'a> for Webpack4Impl<'a, '_> {
     }
 
     fn enter_statement(&mut self, node: &mut Statement<'a>, ctx: &mut TraverseCtx<'a>) {
-        // println!("enter statement: {:?}", node);
         let Statement::ExpressionStatement(es) = node else {
             return;
         };
         let expr = &es.expression;
         let es_span = es.span;
+        // if the expression is a esm helper function, set is_esm to true and replace the statement with empty statement
         if self.is_esm(expr, ctx) {
             self.ctx.is_esm.replace(true);
             *node = ctx.ast.statement_empty(es_span);
