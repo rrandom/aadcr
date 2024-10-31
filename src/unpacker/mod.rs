@@ -1,9 +1,9 @@
-use oxc_codegen::CodeGenerator;
 use indexmap::IndexMap;
+use oxc_codegen::CodeGenerator;
 use std::{
     cell::RefCell,
     fs,
-    path::{Path, PathBuf}
+    path::{Path, PathBuf},
 };
 
 use oxc_allocator::{Allocator, Box, CloneIn};
@@ -18,7 +18,7 @@ use oxc_ast::{
 };
 use oxc_semantic::{NodeId, ScopeTree, SemanticBuilder, SymbolId, SymbolTable};
 use oxc_span::{Atom, GetSpan, Span};
-use oxc_traverse::{Traverse, TraverseCtx};
+use oxc_traverse::{Ancestor, Traverse, TraverseCtx};
 
 pub struct Module<'a> {
     pub id: usize,
@@ -48,7 +48,7 @@ pub fn unpack<'a>(
             let file_name = format!("module_{}.js", module.id);
             let path = Path::new(output_dir).join(file_name);
 
-            println!("write to {:?}", path);
+            // println!("write to {:?}", path);
             fs::write(&path, &code).unwrap();
             files.push(path);
         }
@@ -580,6 +580,24 @@ impl<'a> Traverse<'a> for Webpack4Impl<'a, '_> {
         ctx: &mut TraverseCtx<'a>,
     ) {
         // println!("call_expr: {:?}", call_expr);
+    }
+
+    fn enter_expression_statement(
+        &mut self,
+        node: &mut oxc_ast::ast::ExpressionStatement<'a>,
+        ctx: &mut TraverseCtx<'a>,
+    ) {
+        let expr = &node.expression;
+        let p = ctx.parent();
+        if let Some((name, arg)) = self.get_require_d(&expr, ctx) {
+            if p.is_expression_statement() {
+                return;
+            } else if p.is_sequence_expression() {
+                return;
+            } else {
+                println!("Found unhandled require_d: {:?}: {:?}, {:?}", p, name, arg);
+            }
+        }
     }
 
     fn enter_expression(&mut self, expr: &mut Expression<'a>, ctx: &mut TraverseCtx<'a>) {
