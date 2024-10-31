@@ -3,7 +3,7 @@ use rustc_hash::FxHashMap;
 use std::{
     cell::RefCell,
     fs,
-    path::{Path, PathBuf},
+    path::{Path, PathBuf}
 };
 
 use oxc_allocator::{Allocator, Box, CloneIn};
@@ -106,7 +106,7 @@ pub fn get_modules_form_webpack4<'a>(
                             println!("arr len: {:?}", arr.elements.len());
                             for fun in arr.elements.iter() {
                                 if let ArrayExpressionElement::FunctionExpression(fun) = fun {
-                                    println!("fun: {:#?}", fun);
+                                    // println!("fun: {:#?}", fun);
                                     module_funs.push(fun);
                                 }
                             }
@@ -436,13 +436,9 @@ impl<'a> Webpack4Impl<'a, '_> {
         else {
             return None;
         };
-        if name.as_str() != "d" {
+        if name.as_str() != "d" || idf.name != "require" {
             return None;
         };
-        if idf.name != "require" {
-            return None;
-        }
-
         if call_expr.arguments.len() != 3 {
             return None;
         };
@@ -597,8 +593,8 @@ impl<'a> Traverse<'a> for Webpack4Impl<'a, '_> {
         let Statement::ExpressionStatement(es) = node else {
             return;
         };
-        let expr = &es.expression;
         let es_span = es.span;
+        let expr = &mut es.expression;
         // if the expression is a esm helper function, set is_esm to true and replace the statement with empty statement
         if self.is_esm(expr, ctx) {
             self.ctx.is_esm.replace(true);
@@ -610,6 +606,29 @@ impl<'a> Traverse<'a> for Webpack4Impl<'a, '_> {
                 .insert_export(name, arg.clone_in(ctx.ast.allocator));
 
             *node = ctx.ast.statement_empty(es_span);
+        } else if let Expression::SequenceExpression(seq) = expr {
+            seq.expressions.retain(|expr| {
+                if let Some((name, arg)) = self.get_require_d(expr, ctx) {
+                    self.ctx
+                        .module_exports
+                        .insert_export(name, arg.clone_in(ctx.ast.allocator));
+                    return false;
+                }
+                true
+            });
+        }
+    }
+
+    // clear empty sequence expression
+    fn exit_statement(&mut self, node: &mut Statement<'a>, ctx: &mut TraverseCtx<'a>) {
+        let Statement::ExpressionStatement(es) = node else {
+            return;
+        };
+        let Expression::SequenceExpression(expr) = &es.expression else {
+            return;
+        };
+        if expr.expressions.len() == 0 {
+            *node = ctx.ast.statement_empty(es.span);
         }
     }
 }
