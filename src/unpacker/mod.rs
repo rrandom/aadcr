@@ -60,7 +60,7 @@ pub fn get_modules_form_webpack4<'a>(
 ) -> Option<std::vec::Vec<Module<'a>>> {
     let semantic = SemanticBuilder::new("").build(program).semantic;
 
-    let mut factory_id = NodeId::DUMMY;
+    let mut factory_id = None;
     let mut factory_callee_id = NodeId::DUMMY;
     let mut factory_arg_id = NodeId::DUMMY;
     let mut factory_arg_ele_id = NodeId::DUMMY;
@@ -97,16 +97,17 @@ pub fn get_modules_form_webpack4<'a>(
                             .elements
                             .iter()
                             .all(|d| matches!(d, ArrayExpressionElement::FunctionExpression(_)));
-                        if all_is_fun {
+                        if all_is_fun && factory_id.is_none() {
                             // println!("Found? {:?}", node.id());
-                            factory_id = node.id();
+                            factory_id = Some(node.id());
+                            println!("arr len: {:?}", arr.elements.len());
                         }
                     }
                 }
             }
             AstKind::ParenthesizedExpression(pe) => {
                 if let Some(id) = nodes.parent_id(node.id()) {
-                    if id == factory_id {
+                    if Some(id)== factory_id {
                         factory_callee_id = node.id();
                     }
                 }
@@ -140,7 +141,7 @@ pub fn get_modules_form_webpack4<'a>(
             }
             AstKind::Argument(_) => {
                 if let Some(id) = nodes.parent_id(node.id()) {
-                    if id == factory_id {
+                    if Some(id)== factory_id {
                         factory_arg_id = node.id();
                     }
                 }
