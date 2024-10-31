@@ -1,6 +1,10 @@
 use oxc_codegen::CodeGenerator;
 use rustc_hash::FxHashMap;
-use std::{cell::RefCell, fs, path::{Path, PathBuf}};
+use std::{
+    cell::RefCell,
+    fs,
+    path::{Path, PathBuf},
+};
 
 use oxc_allocator::{Allocator, Box, CloneIn};
 use oxc_ast::{
@@ -50,7 +54,10 @@ pub fn unpack<'a>(
         }
         UnpackResult { files, modules }
     } else {
-        UnpackResult { files: vec![], modules: vec![] }
+        UnpackResult {
+            files: vec![],
+            modules: vec![],
+        }
     }
 }
 
@@ -61,14 +68,10 @@ pub fn get_modules_form_webpack4<'a>(
     let semantic = SemanticBuilder::new("").build(program).semantic;
 
     let mut factory_id = None;
-    let mut factory_callee_id = NodeId::DUMMY;
-    let mut factory_arg_id = NodeId::DUMMY;
-    let mut factory_arg_ele_id = NodeId::DUMMY;
-
     let mut entry_ids = vec![];
+    let mut factory_callee_id = NodeId::DUMMY;
 
-    let mut module_fun_ids = vec![];
-    let mut module_funs: FxHashMap<NodeId, std::vec::Vec<SymbolId>> = FxHashMap::default();
+    let mut module_funs = vec![];
 
     let nodes = semantic.nodes();
     let program_source_type = nodes
@@ -101,13 +104,18 @@ pub fn get_modules_form_webpack4<'a>(
                             // println!("Found? {:?}", node.id());
                             factory_id = Some(node.id());
                             println!("arr len: {:?}", arr.elements.len());
+                            for fun in arr.elements.iter() {
+                                if let ArrayExpressionElement::FunctionExpression(fun) = fun {
+                                    module_funs.push(fun);
+                                }
+                            }
                         }
                     }
                 }
             }
             AstKind::ParenthesizedExpression(pe) => {
                 if let Some(id) = nodes.parent_id(node.id()) {
-                    if Some(id)== factory_id {
+                    if Some(id) == factory_id {
                         factory_callee_id = node.id();
                     }
                 }
@@ -139,50 +147,6 @@ pub fn get_modules_form_webpack4<'a>(
                     }
                 }
             }
-            AstKind::Argument(_) => {
-                if let Some(id) = nodes.parent_id(node.id()) {
-                    if Some(id)== factory_id {
-                        factory_arg_id = node.id();
-                    }
-                }
-            }
-            AstKind::ArrayExpression(_) => {
-                if let Some(id) = nodes.parent_id(node.id()) {
-                    if id == factory_arg_id {
-                        factory_arg_ele_id = node.id();
-                    }
-                }
-            }
-            AstKind::Function(fun) => {
-                let mut rec = node.id();
-                for _ in 0..3 {
-                    let ancestor_id = nodes.parent_id(rec);
-                    if ancestor_id.is_none() {
-                        break;
-                    } else {
-                        rec = ancestor_id.unwrap();
-                    }
-                }
-                if factory_arg_ele_id == rec {
-                    // println!("Got!");
-                    module_fun_ids.push(node.id());
-
-                    for param in fun.params.items.iter() {
-                        if let BindingPatternKind::BindingIdentifier(param) = &param.pattern.kind {
-                            // println!(
-                            //     "Fun: {:?} => bd: {:?}, {:?}",
-                            //     node.id(),
-                            //     param.name,
-                            //     param.symbol_id
-                            // );
-
-                            let fun_entry = module_funs.entry(node.id()).or_default(); // 确保获取到 Vec<SymbolId>
-                            let sid = param.symbol_id.get().unwrap();
-                            fun_entry.push(sid); // 现在可以安全地调用 push
-                        }
-                    }
-                }
-            }
             _ => {}
         }
     }
@@ -192,19 +156,15 @@ pub fn get_modules_form_webpack4<'a>(
     //     factory_id, factory_arg_id, factory_arg_ele_id, module_fun_ids, entry_ids, module_funs
     // );
 
-    println!(
-        "module_fun_ids: {:?} with modules: {:?}",
-        module_fun_ids,
-        module_fun_ids.len()
-    );
+    println!("module_funs len: {:?}", module_funs.len());
 
     let mut modules = vec![];
-    for (module_id, fun_id) in module_fun_ids.iter().enumerate() {
-        let fun = nodes.get_node(*fun_id).kind().as_function().unwrap();
+    for (module_id, fun) in module_funs.iter_mut().enumerate() {
         let new_fun = fun.clone_in(allocator);
 
         let ast = AstBuilder::new(allocator);
-        let st = ast.statement_expression(fun.span, ast.expression_from_function(new_fun));
+        let fun_statement =
+            ast.statement_expression(fun.span, ast.expression_from_function(new_fun));
 
         let directives = program_directives
             .clone_in(allocator)
@@ -215,7 +175,7 @@ pub fn get_modules_form_webpack4<'a>(
             program_source_type.unwrap().clone_in(allocator),
             None,
             directives,
-            ast.vec1(st),
+            ast.vec1(fun_statement),
         );
         let mut fun_renamer =
             FunctionParamRenamer::new(allocator, ["module", "exports", "require"]);
