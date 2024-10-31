@@ -12,7 +12,7 @@ use oxc_span::SourceType;
 // use oxc_transformer::{EnvOptions, Targets, TransformOptions, Transformer};
 use pico_args::Arguments;
 
-use unpacker::get_modules_form_webpack4;
+use unpacker::{get_modules_form_webpack4, unpack};
 
 fn main() {
     let mut args = Arguments::from_env();
@@ -52,17 +52,20 @@ fn main() {
             println!("{error:?}");
         }
     }
-    let Some(modules) = get_modules_form_webpack4(&allocator, &mut program) else {
-        return;
-    };
+    let unpack_result = unpack(&allocator, &mut program, "tmp/output");
+    // let Some(modules) = unpack_result.modules else {
+    //     return;
+    // };
 
-    for module in modules.iter() {
-        println!(
-            "module: {:?}, is_entry: {:?} ===",
-            module.id, module.is_entry
-        );
+    println!("result:{:?}", unpack_result.files.len());
 
-        let module_str = CodeGenerator::new().build(&module.content).code;
-        println!("{module_str}");
-    }
+    // for module in modules.iter() {
+    //     println!(
+    //         "module: {:?}, is_entry: {:?} ===",
+    //         module.id, module.is_entry
+    //     );
+
+    //     let module_str = CodeGenerator::new().build(&module.content).code;
+    //     println!("{module_str}");
+    // }
 }

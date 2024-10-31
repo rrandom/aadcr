@@ -1,5 +1,6 @@
+use oxc_codegen::CodeGenerator;
 use rustc_hash::FxHashMap;
-use std::cell::RefCell;
+use std::{cell::RefCell, fs, path::{Path, PathBuf}};
 
 use oxc_allocator::{Allocator, Box, CloneIn};
 use oxc_ast::{
@@ -19,6 +20,38 @@ pub struct Module<'a> {
     pub id: usize,
     pub is_entry: bool,
     pub content: Program<'a>,
+}
+
+pub struct UnpackResult<'a> {
+    pub files: std::vec::Vec<PathBuf>,
+    pub modules: std::vec::Vec<Module<'a>>,
+}
+
+pub fn unpack<'a>(
+    allocator: &'a Allocator,
+    program: &Program<'a>,
+    output_dir: &str,
+) -> UnpackResult<'a> {
+    let mut files = vec![];
+    let modules = get_modules_form_webpack4(allocator, program);
+    if let Some(modules) = modules {
+        fs::create_dir_all(output_dir).unwrap_or_else(|e| {
+            eprintln!("Failed to create output directory: {}", e);
+        });
+
+        for module in modules.iter() {
+            let code = CodeGenerator::new().build(&module.content).code;
+            let file_name = format!("module_{}.js", module.id);
+            let path = Path::new(output_dir).join(file_name);
+
+            println!("write to {:?}", path);
+            fs::write(&path, &code).unwrap();
+            files.push(path);
+        }
+        UnpackResult { files, modules }
+    } else {
+        UnpackResult { files: vec![], modules: vec![] }
+    }
 }
 
 pub fn get_modules_form_webpack4<'a>(
@@ -153,9 +186,15 @@ pub fn get_modules_form_webpack4<'a>(
         }
     }
 
+    // println!(
+    //     "factory: {:?} ard_id: {:?}, ae_id: {:?}, module_fun_ids: {:?}, entry_ids: {:?} and moduleFuns: {:?}",
+    //     factory_id, factory_arg_id, factory_arg_ele_id, module_fun_ids, entry_ids, module_funs
+    // );
+
     println!(
-        "factory: {:?} ard_id: {:?}, ae_id: {:?}, module_fun_ids: {:?}, entry_ids: {:?} and moduleFuns: {:?}",
-        factory_id, factory_arg_id, factory_arg_ele_id, module_fun_ids, entry_ids, module_funs
+        "module_fun_ids: {:?} with modules: {:?}",
+        module_fun_ids,
+        module_fun_ids.len()
     );
 
     let mut modules = vec![];
@@ -467,7 +506,7 @@ impl<'a> Webpack4Impl<'a, '_> {
 
 impl<'a> Traverse<'a> for Webpack4Impl<'a, '_> {
     fn enter_program(&mut self, program: &mut Program<'a>, ctx: &mut TraverseCtx<'a>) {
-        println!("enter program");
+        // println!("enter program");
     }
 
     fn exit_program(&mut self, program: &mut Program<'a>, ctx: &mut TraverseCtx<'a>) {
