@@ -6,6 +6,7 @@ version = 4
 name = "aadcr"
 version = "0.1.0"
 dependencies = [
+ "indexmap",
  "oxc_allocator",
  "oxc_ast",
  "oxc_codegen",

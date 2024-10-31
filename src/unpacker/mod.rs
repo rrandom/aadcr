@@ -1,5 +1,5 @@
 use oxc_codegen::CodeGenerator;
-use rustc_hash::FxHashMap;
+use indexmap::IndexMap;
 use std::{
     cell::RefCell,
     fs,
@@ -312,13 +312,13 @@ impl<'a> Traverse<'a> for FunctionParamRenamer<'a> {
 
 // a export is a return statement argument or a identifier reference
 struct ModuleExportsStore<'a> {
-    pub exports: RefCell<FxHashMap<Atom<'a>, Expression<'a>>>,
+    pub exports: RefCell<IndexMap<Atom<'a>, Expression<'a>>>,
 }
 
 impl<'a> ModuleExportsStore<'a> {
     pub fn new() -> Self {
         Self {
-            exports: RefCell::new(FxHashMap::default()),
+            exports: RefCell::new(IndexMap::default()),
         }
     }
 
