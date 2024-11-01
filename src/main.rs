@@ -1,5 +1,4 @@
 #![allow(clippy::print_stdout)]
-mod unpacker;
 
 use std::{env, path::Path};
 
@@ -10,10 +9,10 @@ use oxc_span::SourceType;
 // use oxc_transformer::{EnvOptions, Targets, TransformOptions, Transformer};
 use pico_args::Arguments;
 
-use unpacker::{get_modules_form_webpack4, unpack};
+pub use aadcr::unpacker::*;
 
 fn main() {
-    let mut args = Arguments::from_env();
+    let args = Arguments::from_env();
     let name = env::args().nth(1).unwrap_or_else(|| "test.js".to_string());
 
     let path = Path::new(&name);
