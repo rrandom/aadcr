@@ -49,7 +49,7 @@ fn main() {
             println!("{error:?}");
         }
     }
-    let unpack_result = unpack(&allocator, &mut program, "tmp/output");
+    let unpack_result = unpacker(&allocator, &mut program, "tmp/output");
     // let Some(modules) = unpack_result.modules else {
     //     return;
     // };

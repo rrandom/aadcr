@@ -142,11 +142,7 @@ pub fn get_modules_form_webpack4<'a>(
 
         let is_entry = entry_ids.contains(&(module_id as f64));
 
-        modules.push(Module {
-            id: module_id,
-            is_entry,
-            content: program,
-        });
+        modules.push(Module::new(module_id, is_entry, program));
     }
 
     Some(modules)
