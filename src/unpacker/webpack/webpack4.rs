@@ -69,6 +69,8 @@ pub fn get_modules_form_webpack4<'a>(
                     }
                 }
             }
+
+            // TO-DO: using without_parentheses
             AstKind::ParenthesizedExpression(pe) => {
                 if let Some(id) = nodes.parent_id(node.id()) {
                     if Some(id) == factory_id {
