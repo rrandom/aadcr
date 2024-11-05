@@ -272,39 +272,36 @@ impl<'a> Webpack5Impl<'a, '_> {
      * })
      * ```
      */
-    fn get_require_d<'b>(
-        &self,
-        expr: &'b Expression<'a>,
-        ctx: &TraverseCtx<'a>,
-    ) -> Option<(Atom<'a>, &'b Expression<'a>)> {
+    fn get_require_d<'b>(&self, expr: &'b Expression<'a>, ctx: &TraverseCtx<'a>) -> bool {
+        let mut found = false;
         let Expression::CallExpression(call_expr) = expr else {
-            return None;
+            return false;
         };
         let Expression::StaticMemberExpression(mem) = &call_expr.callee else {
-            return None;
+            return false;
         };
         let (Expression::Identifier(idf), IdentifierName { name, .. }) =
             (&mem.object, &mem.property)
         else {
-            return None;
+            return false;
         };
         if name.as_str() != "d" || idf.name != "require" {
-            return None;
+            return false;
         };
         let [Argument::Identifier(_), Argument::ObjectExpression(obj)] =
             call_expr.arguments.as_slice()
         else {
-            return None;
+            return false;
         };
         for prop in obj.properties.iter() {
             let ObjectPropertyKind::ObjectProperty(obj_prop) = prop else {
-                return None;
+                return false;
             };
             let k = match &obj_prop.key {
                 PropertyKey::StringLiteral(s) => &s.value,
                 PropertyKey::StaticIdentifier(s) => &s.name,
                 _ => {
-                    return None;
+                    return false;
                 }
             };
 
@@ -312,7 +309,7 @@ impl<'a> Webpack5Impl<'a, '_> {
                 Expression::FunctionExpression(s) => s.body.as_ref(),
                 Expression::ArrowFunctionExpression(s) => Some(&s.body),
                 _ => {
-                    return None;
+                    return false;
                 }
             };
 
@@ -321,7 +318,7 @@ impl<'a> Webpack5Impl<'a, '_> {
                 // if (defineObject.properties.length === 0) {
                 //     path.prune()
                 // }
-                return None;
+                return false;
             };
             if body.statements.len() == 1 {
                 match &body.statements[0] {
@@ -330,7 +327,7 @@ impl<'a> Webpack5Impl<'a, '_> {
                             self.ctx
                                 .module_exports
                                 .insert_export(k.clone(), arg.clone_in(ctx.ast.allocator));
-                            return Some((k.clone(), arg));
+                            found = true;
                         }
                     }
                     Statement::ExpressionStatement(es) => {
@@ -342,15 +339,14 @@ impl<'a> Webpack5Impl<'a, '_> {
                             self.ctx
                                 .module_exports
                                 .insert_export(k.clone(), arg.clone_in(ctx.ast.allocator));
-                            return Some((k.clone(), arg));
+                            found = true;
                         }
                     }
                     _ => {}
                 }
             }
         }
-        // TO-DO
-        None
+        return found;
     }
 }
 
@@ -529,11 +525,11 @@ impl<'a> Traverse<'a> for Webpack5Impl<'a, '_> {
         if self.is_esm(expr, ctx) {
             self.ctx.is_esm.replace(true);
             *node = ctx.ast.statement_empty(es_span);
-        } else if let Some((name, arg)) = self.get_require_d(expr, ctx) {
+        } else if self.get_require_d(expr, ctx) {
             *node = ctx.ast.statement_empty(es_span);
         } else if let Expression::SequenceExpression(seq) = expr {
             seq.expressions.retain(|expr| {
-                if let Some((name, arg)) = self.get_require_d(expr, ctx) {
+                if self.get_require_d(expr, ctx) {
                     return false;
                 }
                 true
