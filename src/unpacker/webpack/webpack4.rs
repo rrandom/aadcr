@@ -4,7 +4,8 @@ use oxc_allocator::{Allocator, Box, CloneIn};
 use oxc_ast::{
     ast::{
         Argument, ArrayExpressionElement, AssignmentExpression, AssignmentOperator, Expression,
-        IdentifierName, ImportOrExportKind, MemberExpression, Program, PropertyKind, Statement, VariableDeclarationKind, WithClause,
+        IdentifierName, ImportOrExportKind, MemberExpression, Program, PropertyKind, Statement,
+        VariableDeclarationKind, WithClause,
     },
     AstBuilder, AstKind,
 };
@@ -12,7 +13,7 @@ use oxc_semantic::{NodeId, ScopeTree, SemanticBuilder, SymbolTable};
 use oxc_span::{Atom, GetSpan, Span};
 use oxc_traverse::{Traverse, TraverseCtx};
 
-use crate::unpacker::common::{fun_to_program::FunctionToProgram, ModuleExportsStore};
+use crate::unpacker::common::{fun_to_program::FunctionToProgram, utils::is_esm_helper, ModuleExportsStore};
 use crate::unpacker::Module;
 
 pub fn get_modules_form_webpack4<'a>(
@@ -134,8 +135,7 @@ pub fn get_modules_form_webpack4<'a>(
             directives,
             ast.vec1(fun_statement),
         );
-        let mut fun_renamer =
-            FunctionToProgram::new(allocator, ["module", "exports", "require"]);
+        let mut fun_renamer = FunctionToProgram::new(allocator, ["module", "exports", "require"]);
         fun_renamer.build(&mut program);
 
         let ret = WebPack4::new(allocator, "").build(&mut program);
@@ -221,21 +221,9 @@ impl<'a, 'ctx> Webpack4Impl<'a, 'ctx> {
 }
 
 impl<'a> Webpack4Impl<'a, '_> {
-    // require.r exists
-    // require.r is a webpack4 helper function defines `__esModule` an exports object
+    #[inline]
     fn is_esm(&self, expr: &Expression<'a>, ctx: &TraverseCtx<'a>) -> bool {
-        let Expression::CallExpression(call_expr) = expr else {
-            return false;
-        };
-        let Expression::StaticMemberExpression(mem) = &call_expr.callee else {
-            return false;
-        };
-        let (Expression::Identifier(idf), IdentifierName { name, .. }) =
-            (&mem.object, &mem.property)
-        else {
-            return false;
-        };
-        idf.name == "require" && name.as_str() == "r"
+        is_esm_helper(expr)
     }
 
     // require.d is a helper function defines getter functions for harmony exports, which convert esm exports to cjs
@@ -312,11 +300,9 @@ impl<'a> Traverse<'a> for Webpack4Impl<'a, '_> {
                         Span::default(),
                         k.clone_in(ctx.ast.allocator),
                     );
-                    let bd = ctx.ast.binding_pattern(
-                        bindingidkind,
-                        None::<Box<_>>,
-                        false,
-                    );
+                    let bd = ctx
+                        .ast
+                        .binding_pattern(bindingidkind, None::<Box<_>>, false);
                     let de = ctx.ast.variable_declarator(
                         v.span(),
                         VariableDeclarationKind::Const,

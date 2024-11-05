@@ -5,18 +5,18 @@ use indexmap::IndexMap;
 use oxc_allocator::{Allocator, Box, CloneIn};
 use oxc_ast::{
     ast::{
-        Argument, AssignmentOperator, Expression, ExpressionStatement,
-        IdentifierName, ImportOrExportKind, ObjectPropertyKind, Program, PropertyKey, PropertyKind,
-        Statement, VariableDeclarationKind, WithClause,
+        Argument, AssignmentOperator, Expression, ExpressionStatement, IdentifierName,
+        ImportOrExportKind, ObjectPropertyKind, Program, PropertyKey, PropertyKind, Statement,
+        VariableDeclarationKind, WithClause,
     },
     AstBuilder, AstKind,
 };
-use oxc_semantic::{NodeId, ScopeTree, SemanticBuilder, SymbolTable};
+use oxc_semantic::{ScopeTree, SemanticBuilder, SymbolTable};
 use oxc_span::{GetSpan, Span};
 use oxc_traverse::{Traverse, TraverseCtx};
 
 use crate::unpacker::{
-    common::{fun_to_program::FunctionToProgram, ModuleExportsStore},
+    common::{fun_to_program::FunctionToProgram, utils::{get_fun_body, is_esm_helper}, ModuleExportsStore},
     Module,
 };
 
@@ -47,11 +47,7 @@ pub fn get_modules_form_webpack5<'a>(
         return None;
     };
 
-    let webpackBootstrap = NodeId::DUMMY;
-
-    // println!("{:#?}", nodes.get_node(root_id));
-
-    let mut moduleMap = IndexMap::new();
+    let mut module_map = IndexMap::new();
     let mut modules = vec![];
 
     for node in nodes.iter() {
@@ -62,108 +58,73 @@ pub fn get_modules_form_webpack5<'a>(
                 let Expression::CallExpression(call_expr) = expression.without_parentheses() else {
                     continue;
                 };
-                match call_expr.callee.without_parentheses() {
-                    Expression::FunctionExpression(fun) => {
-                        let Some(body) = &fun.body else {
+
+                let Some(fun_body) = get_fun_body(call_expr.callee.without_parentheses()) else {
+                    continue;
+                };
+
+                for st in fun_body.statements.iter() {
+                    let Statement::VariableDeclaration(vardecl) = st else {
+                        continue;
+                    };
+                    let de = &vardecl.declarations[0];
+
+                    let Some(init) = &de.init else {
+                        continue;
+                    };
+                    let Expression::ObjectExpression(ob) = init.without_parentheses() else {
+                        continue;
+                    };
+                    for prop in ob.properties.iter() {
+                        let ObjectPropertyKind::ObjectProperty(obj_prop) = prop else {
                             continue;
                         };
-                        for st in body.statements.iter() {
-                            let Statement::VariableDeclaration(vardecl) = st else {
-                                continue;
-                            };
-                            // println!("====> vardecl {:?}", vardecl);
-                            let de = &vardecl.declarations[0];
+                        let Some(Expression::StringLiteral(key)) = obj_prop.key.as_expression()
+                        else {
+                            continue;
+                        };
+                        let module_id = &key.value;
 
-                            let Some(init) = &de.init else {
+                        let expr = obj_prop.value.without_parentheses();
+
+                        match expr {
+                            Expression::ArrowFunctionExpression(_)
+                            | Expression::FunctionExpression(_) => {
+                                module_map.insert(module_id.as_str(), expr);
+                            }
+                            _ => {
                                 continue;
-                            };
-                            let Expression::ObjectExpression(ob) = init.without_parentheses()
-                            else {
-                                continue;
-                            };
-                            for prop in ob.properties.iter() {
-                                let ObjectPropertyKind::ObjectProperty(obj_prop) = prop else {
-                                    continue;
-                                };
-                                // println!("====> obj_prop {:?}", obj_prop.key);
                             }
                         }
                     }
-                    Expression::ArrowFunctionExpression(fun) => {
-                        let body = &fun.body;
-                        for st in body.statements.iter() {
-                            let Statement::VariableDeclaration(vardecl) = st else {
-                                continue;
-                            };
-                            // println!("====> vardecl {:?}", vardecl);
-                            let de = &vardecl.declarations[0];
+                }
 
-                            let Some(init) = &de.init else {
-                                continue;
-                            };
-                            let Expression::ObjectExpression(ob) = init.without_parentheses()
-                            else {
-                                continue;
-                            };
-                            for prop in ob.properties.iter() {
-                                let ObjectPropertyKind::ObjectProperty(obj_prop) = prop else {
-                                    continue;
-                                };
-                                // println!("====> obj_prop {:?}", obj_prop.value);
-                                let Some(Expression::StringLiteral(s)) =
-                                    obj_prop.key.as_expression()
-                                else {
-                                    continue;
-                                };
-                                let module_id = &s.value;
-                                // println!("====> module_id {:?}", module_id);
+                let last_st = fun_body.statements.last();
 
-                                let expr = obj_prop.value.without_parentheses();
+                if let Some(Statement::ExpressionStatement(expr)) = last_st {
+                    let Expression::CallExpression(expr) = expr.expression.without_parentheses()
+                    else {
+                        continue;
+                    };
 
-                                match expr {
-                                    Expression::ArrowFunctionExpression(_)
-                                    | Expression::FunctionExpression(_) => {}
-                                    _ => {
-                                        continue;
-                                    }
-                                }
+                    let expr = expr.callee.without_parentheses();
 
-                                moduleMap.insert(module_id.as_str(), expr);
-                            }
+                    match expr {
+                        Expression::ArrowFunctionExpression(_)
+                        | Expression::FunctionExpression(_) => {
+                            module_map.insert("entry.js", expr);
                         }
-
-                        let last = body.statements.last();
-
-                        if let Some(Statement::ExpressionStatement(expr)) = last {
-                            let Expression::CallExpression(expr) =
-                                expr.expression.without_parentheses()
-                            else {
-                                continue;
-                            };
-
-                            let expr = expr.callee.without_parentheses();
-
-                            match expr {
-                                Expression::ArrowFunctionExpression(_)
-                                | Expression::FunctionExpression(_) => {}
-                                _ => {
-                                    continue;
-                                }
-                            }
-
-                            moduleMap.insert("entry.js", expr);
+                        _ => {
+                            continue;
                         }
                     }
-                    _ => {}
                 }
             }
             _ => {}
         }
     }
 
-    for (module_id, expr) in moduleMap {
-        // println!("====> module_id {:?} {:?}", module_id, expr);
-
+    for (module_id, expr) in module_map {
         let fun_statement = ast.statement_expression(Span::default(), expr.clone_in(allocator));
 
         let directives = program_directives
@@ -178,11 +139,10 @@ pub fn get_modules_form_webpack5<'a>(
             ast.vec1(fun_statement),
         );
 
-        let mut fun_renamer =
-            FunctionToProgram::new(allocator, ["module", "exports", "require"]);
+        let mut fun_renamer = FunctionToProgram::new(allocator, ["module", "exports", "require"]);
         fun_renamer.build(&mut program);
 
-        let ret = WebPack5::new(allocator, "").build(&mut program);
+        let _ret = WebPack5::new(allocator, "").build(&mut program);
 
         modules.push(Module::new(module_id.to_string(), false, program));
     }
@@ -262,21 +222,9 @@ impl<'a, 'ctx> Webpack5Impl<'a, 'ctx> {
 }
 
 impl<'a> Webpack5Impl<'a, '_> {
-    // require.r exists
-    // require.r is a webpack4 helper function defines `__esModule` an exports object
-    fn is_esm(&self, expr: &Expression<'a>, ctx: &TraverseCtx<'a>) -> bool {
-        let Expression::CallExpression(call_expr) = expr else {
-            return false;
-        };
-        let Expression::StaticMemberExpression(mem) = &call_expr.callee else {
-            return false;
-        };
-        let (Expression::Identifier(idf), IdentifierName { name, .. }) =
-            (&mem.object, &mem.property)
-        else {
-            return false;
-        };
-        idf.name == "require" && name.as_str() == "r"
+    #[inline]
+    fn is_esm(&self, expr: &Expression<'a>, _ctx: &TraverseCtx<'a>) -> bool {
+        is_esm_helper(expr)
     }
 
     /**

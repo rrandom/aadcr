@@ -5,8 +5,8 @@ pub mod webpack4;
 pub mod webpack5;
 
 use super::Module;
-use webpack5::get_modules_form_webpack5;
 use webpack4::get_modules_form_webpack4;
+use webpack5::get_modules_form_webpack5;
 
 pub fn get_modules_form_webpack<'a>(
     allocator: &'a Allocator,
