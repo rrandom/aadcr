@@ -271,11 +271,11 @@ impl<'a> Webpack4Impl<'a, '_> {
         else {
             return None;
         };
-        let Some(fb) = &f.body else { return None };
-        if fb.statements.len() != 1 {
+        let Some(body) = &f.body else { return None };
+        if body.statements.len() != 1 {
             return None;
         };
-        let Statement::ReturnStatement(ret) = &fb.statements[0] else {
+        let Statement::ReturnStatement(ret) = &body.statements[0] else {
             return None;
         };
         let Some(arg) = &ret.argument else {
@@ -315,7 +315,7 @@ impl<'a> Traverse<'a> for Webpack4Impl<'a, '_> {
                     );
                     let bd = ctx.ast.binding_pattern(
                         bindingidkind,
-                        None::<Box<TSTypeAnnotation<'a>>>,
+                        None::<Box<_>>,
                         false,
                     );
                     let de = ctx.ast.variable_declarator(
