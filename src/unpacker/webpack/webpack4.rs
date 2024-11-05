@@ -13,7 +13,7 @@ use oxc_semantic::{NodeId, ScopeTree, SemanticBuilder, SymbolTable};
 use oxc_span::{Atom, GetSpan, Span};
 use oxc_traverse::{Traverse, TraverseCtx};
 
-use crate::unpacker::common::{fun_to_program::FunctionToProgram, utils::is_esm_helper, ModuleExportsStore};
+use crate::unpacker::common::{fun_to_program::FunctionToProgram, utils, ModuleExportsStore};
 use crate::unpacker::Module;
 
 pub fn get_modules_form_webpack4<'a>(
@@ -223,7 +223,7 @@ impl<'a, 'ctx> Webpack4Impl<'a, 'ctx> {
 impl<'a> Webpack4Impl<'a, '_> {
     #[inline]
     fn is_esm(&self, expr: &Expression<'a>, ctx: &TraverseCtx<'a>) -> bool {
-        is_esm_helper(expr)
+        utils::is_esm_helper(expr)
     }
 
     // require.d is a helper function defines getter functions for harmony exports, which convert esm exports to cjs
@@ -279,16 +279,11 @@ impl<'a> Traverse<'a> for Webpack4Impl<'a, '_> {
     }
 
     fn exit_program(&mut self, program: &mut Program<'a>, ctx: &mut TraverseCtx<'a>) {
-        // println!("exit program");
-        // println!(
-        //     "module exports: {:?}",
-        //     self.ctx.module_exports.exports.borrow()
-        // );
         program
             .body
             .retain(|s| !matches!(s, Statement::EmptyStatement(_)));
+
         if *self.ctx.is_esm.borrow() {
-            // println!("is esm: {:?}", self.ctx.is_esm.borrow());
             self.ctx
                 .module_exports
                 .exports
@@ -329,50 +324,10 @@ impl<'a> Traverse<'a> for Webpack4Impl<'a, '_> {
                     program.body.push(st);
                 });
         } else {
-            if self.ctx.module_exports.exports.borrow().is_empty() {
-                return;
+            // Generate module.exports = { ... }
+            if let Some(statement) = self.ctx.module_exports.gen_cjs_exports(&ctx.ast) {
+                program.body.push(statement);
             }
-
-            let properties =
-                ctx.ast
-                    .vec_from_iter(self.ctx.module_exports.exports.borrow().iter().map(
-                        |(k, v)| {
-                            ctx.ast.object_property_kind_object_property(
-                                Span::default(),
-                                PropertyKind::Init,
-                                ctx.ast.property_key_identifier_name(
-                                    Span::default(),
-                                    k.clone_in(ctx.ast.allocator),
-                                ),
-                                v.clone_in(ctx.ast.allocator),
-                                None,
-                                false,
-                                false,
-                                false,
-                            )
-                        },
-                    ));
-
-            let inner = ctx.ast.member_expression_from_static(
-                ctx.ast.static_member_expression(
-                    Span::default(),
-                    ctx.ast
-                        .expression_identifier_reference(Span::default(), "module"),
-                    ctx.ast.identifier_name(Span::default(), "exports"),
-                    false,
-                ),
-            );
-            let inner = ctx.ast.simple_assignment_target_member_expression(inner);
-
-            let right = ctx.ast.expression_object(Span::default(), properties, None);
-            let exp = ctx.ast.expression_assignment(
-                Span::default(),
-                AssignmentOperator::Assign,
-                ctx.ast.assignment_target_simple(inner),
-                right,
-            );
-            let s = ctx.ast.statement_expression(Span::default(), exp);
-            program.body.push(s);
         }
     }
 

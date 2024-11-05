@@ -16,7 +16,7 @@ use oxc_span::{GetSpan, Span};
 use oxc_traverse::{Traverse, TraverseCtx};
 
 use crate::unpacker::{
-    common::{fun_to_program::FunctionToProgram, utils::{get_fun_body, is_esm_helper}, ModuleExportsStore},
+    common::{fun_to_program::FunctionToProgram, utils, ModuleExportsStore},
     Module,
 };
 
@@ -59,7 +59,8 @@ pub fn get_modules_form_webpack5<'a>(
                     continue;
                 };
 
-                let Some(fun_body) = get_fun_body(call_expr.callee.without_parentheses()) else {
+                let Some(fun_body) = utils::get_fun_body(call_expr.callee.without_parentheses())
+                else {
                     continue;
                 };
 
@@ -224,7 +225,7 @@ impl<'a, 'ctx> Webpack5Impl<'a, 'ctx> {
 impl<'a> Webpack5Impl<'a, '_> {
     #[inline]
     fn is_esm(&self, expr: &Expression<'a>, _ctx: &TraverseCtx<'a>) -> bool {
-        is_esm_helper(expr)
+        utils::is_esm_helper(expr)
     }
 
     /**
@@ -321,25 +322,19 @@ impl<'a> Webpack5Impl<'a, '_> {
 }
 
 impl<'a> Traverse<'a> for Webpack5Impl<'a, '_> {
-    fn enter_program(&mut self, program: &mut Program<'a>, ctx: &mut TraverseCtx<'a>) {
-        // println!("enter program");
-    }
-
     fn exit_program(&mut self, program: &mut Program<'a>, ctx: &mut TraverseCtx<'a>) {
         program
             .body
             .retain(|s| !matches!(s, Statement::EmptyStatement(_)));
+
         if *self.ctx.is_esm.borrow() {
             // Generate export { ... }
-            // println!("is esm: {:?}", self.ctx.is_esm.borrow());
             self.ctx
                 .module_exports
                 .exports
                 .borrow()
                 .iter()
                 .for_each(|(k, v)| {
-                    // println!("export: {:?}", k);
-
                     if k.as_str() == "default" {
                         let name = ctx.ast.module_export_name_identifier_reference(
                             Span::default(),
@@ -428,64 +423,14 @@ impl<'a> Traverse<'a> for Webpack5Impl<'a, '_> {
                 });
         } else {
             // Generate module.exports = { ... }
-
-            if self.ctx.module_exports.exports.borrow().is_empty() {
-                return;
+            if let Some(statement) = self.ctx.module_exports.gen_cjs_exports(&ctx.ast) {
+                program.body.push(statement);
             }
-
-            let properties =
-                ctx.ast
-                    .vec_from_iter(self.ctx.module_exports.exports.borrow().iter().map(
-                        |(k, v)| {
-                            ctx.ast.object_property_kind_object_property(
-                                Span::default(),
-                                PropertyKind::Init,
-                                ctx.ast.property_key_identifier_name(
-                                    Span::default(),
-                                    k.clone_in(ctx.ast.allocator),
-                                ),
-                                v.clone_in(ctx.ast.allocator),
-                                None,
-                                false,
-                                false,
-                                false,
-                            )
-                        },
-                    ));
-
-            let inner = ctx.ast.member_expression_from_static(
-                ctx.ast.static_member_expression(
-                    Span::default(),
-                    ctx.ast
-                        .expression_identifier_reference(Span::default(), "module"),
-                    ctx.ast.identifier_name(Span::default(), "exports"),
-                    false,
-                ),
-            );
-            let inner = ctx.ast.simple_assignment_target_member_expression(inner);
-
-            let right = ctx.ast.expression_object(Span::default(), properties, None);
-            let exp = ctx.ast.expression_assignment(
-                Span::default(),
-                AssignmentOperator::Assign,
-                ctx.ast.assignment_target_simple(inner),
-                right,
-            );
-            let s = ctx.ast.statement_expression(Span::default(), exp);
-            program.body.push(s);
         }
     }
 
-    fn enter_expression_statement(
-        &mut self,
-        node: &mut oxc_ast::ast::ExpressionStatement<'a>,
-        ctx: &mut TraverseCtx<'a>,
-    ) {
-        // TO-DO
-    }
-
-    fn enter_statement(&mut self, node: &mut Statement<'a>, ctx: &mut TraverseCtx<'a>) {
-        let Statement::ExpressionStatement(es) = node else {
+    fn enter_statement(&mut self, statement: &mut Statement<'a>, ctx: &mut TraverseCtx<'a>) {
+        let Statement::ExpressionStatement(es) = statement else {
             return;
         };
 
@@ -494,9 +439,9 @@ impl<'a> Traverse<'a> for Webpack5Impl<'a, '_> {
         // if the expression is a esm helper function, set is_esm to true and replace the statement with empty statement
         if self.is_esm(expr, ctx) {
             self.ctx.is_esm.replace(true);
-            *node = ctx.ast.statement_empty(es_span);
+            *statement = ctx.ast.statement_empty(es_span);
         } else if self.get_require_d(expr, ctx) {
-            *node = ctx.ast.statement_empty(es_span);
+            *statement = ctx.ast.statement_empty(es_span);
         } else if let Expression::SequenceExpression(seq) = expr {
             seq.expressions.retain(|expr| {
                 if self.get_require_d(expr, ctx) {
@@ -507,15 +452,15 @@ impl<'a> Traverse<'a> for Webpack5Impl<'a, '_> {
         }
     }
 
-    fn exit_statement(&mut self, node: &mut Statement<'a>, ctx: &mut TraverseCtx<'a>) {
-        let Statement::ExpressionStatement(es) = node else {
+    fn exit_statement(&mut self, statement: &mut Statement<'a>, ctx: &mut TraverseCtx<'a>) {
+        let Statement::ExpressionStatement(es) = statement else {
             return;
         };
         let Expression::SequenceExpression(expr) = &es.expression else {
             return;
         };
         if expr.expressions.len() == 0 {
-            *node = ctx.ast.statement_empty(es.span);
+            *statement = ctx.ast.statement_empty(es.span);
         }
     }
 }
