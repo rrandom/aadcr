@@ -1,16 +1,15 @@
 use std::cell::RefCell;
 
-use oxc_allocator::{Allocator, Box, CloneIn};
+use oxc_allocator::{Allocator, CloneIn};
 use oxc_ast::{
     ast::{
-        Argument, ArrayExpressionElement, AssignmentExpression, AssignmentOperator, Expression,
-        IdentifierName, ImportOrExportKind, MemberExpression, Program, PropertyKind, Statement,
-        VariableDeclarationKind, WithClause,
+        Argument, ArrayExpressionElement, AssignmentExpression, Expression, IdentifierName,
+        MemberExpression, Program, Statement,
     },
     AstBuilder, AstKind,
 };
 use oxc_semantic::{NodeId, ScopeTree, SemanticBuilder, SymbolTable};
-use oxc_span::{Atom, GetSpan, Span};
+use oxc_span::{Atom, Span};
 use oxc_traverse::{Traverse, TraverseCtx};
 
 use crate::unpacker::common::{fun_to_program::FunctionToProgram, utils, ModuleExportsStore};

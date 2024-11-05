@@ -2,17 +2,16 @@ use std::cell::RefCell;
 
 use indexmap::IndexMap;
 
-use oxc_allocator::{Allocator, Box, CloneIn};
+use oxc_allocator::{Allocator, CloneIn};
 use oxc_ast::{
     ast::{
-        Argument, AssignmentOperator, Expression, ExpressionStatement, IdentifierName,
-        ImportOrExportKind, ObjectPropertyKind, Program, PropertyKey, PropertyKind, Statement,
-        VariableDeclarationKind, WithClause,
+        Argument, Expression, ExpressionStatement, IdentifierName, ObjectPropertyKind, Program,
+        PropertyKey, Statement,
     },
     AstBuilder, AstKind,
 };
 use oxc_semantic::{ScopeTree, SemanticBuilder, SymbolTable};
-use oxc_span::{GetSpan, Span};
+use oxc_span::{Span};
 use oxc_traverse::{Traverse, TraverseCtx};
 
 use crate::unpacker::{
