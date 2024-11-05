@@ -284,45 +284,9 @@ impl<'a> Traverse<'a> for Webpack4Impl<'a, '_> {
             .retain(|s| !matches!(s, Statement::EmptyStatement(_)));
 
         if *self.ctx.is_esm.borrow() {
-            self.ctx
-                .module_exports
-                .exports
-                .borrow()
-                .iter()
-                .for_each(|(k, v)| {
-                    // println!("export: {:?} => {:?}", k, v);
-                    let bindingidkind = ctx.ast.binding_pattern_kind_binding_identifier(
-                        Span::default(),
-                        k.clone_in(ctx.ast.allocator),
-                    );
-                    let bd = ctx
-                        .ast
-                        .binding_pattern(bindingidkind, None::<Box<_>>, false);
-                    let de = ctx.ast.variable_declarator(
-                        v.span(),
-                        VariableDeclarationKind::Const,
-                        bd,
-                        Some(v.clone_in(ctx.ast.allocator)),
-                        false,
-                    );
-                    let de = ctx.ast.variable_declaration(
-                        v.span(),
-                        VariableDeclarationKind::Const,
-                        ctx.ast.vec1(de),
-                        false,
-                    );
-                    let de = ctx.ast.declaration_from_variable(de);
-                    let st = ctx.ast.alloc_export_named_declaration(
-                        v.span(),
-                        Some(de),
-                        ctx.ast.vec(),
-                        None,
-                        ImportOrExportKind::Value,
-                        None::<WithClause<'a>>,
-                    );
-                    let st = Statement::ExportNamedDeclaration(st);
-                    program.body.push(st);
-                });
+            // Generate export { ... }
+            let statements = self.ctx.module_exports.gen_esm_exports(&ctx.ast);
+            program.body.extend(statements);
         } else {
             // Generate module.exports = { ... }
             if let Some(statement) = self.ctx.module_exports.gen_cjs_exports(&ctx.ast) {

@@ -1,9 +1,12 @@
 use indexmap::IndexMap;
 use std::cell::RefCell;
 
-use oxc_allocator::CloneIn;
+use oxc_allocator::{Box, CloneIn};
 use oxc_ast::{
-    ast::{AssignmentOperator, Expression, PropertyKind, Statement},
+    ast::{
+        AssignmentOperator, Expression, ImportOrExportKind, PropertyKind, Statement,
+        VariableDeclarationKind,
+    },
     AstBuilder,
 };
 use oxc_span::{Atom, Span};
@@ -32,8 +35,94 @@ impl<'a> ModuleExportsStore<'a> {
         self.exports.borrow_mut().insert(name, expr);
     }
 
-    pub fn gen_esm_exports(&self) -> Vec<Statement<'a>> {
-        todo!()
+    pub fn gen_esm_exports(&self, ast: &AstBuilder<'a>) -> Vec<Statement<'a>> {
+        let mut statements = Vec::new();
+        let exports = self.exports.borrow();
+        exports.iter().for_each(|(export_key, export_value)| {
+            // export default
+            if export_key.as_str() == "default" {
+                let name = ast.module_export_name_identifier_reference(
+                    Span::default(),
+                    export_key.clone_in(ast.allocator),
+                );
+
+                let export_default_kind = ast.export_default_declaration_kind_expression(
+                    export_value.clone_in(ast.allocator),
+                );
+
+                let statement =
+                    Statement::ExportDefaultDeclaration(ast.alloc_export_default_declaration(
+                        Span::default(),
+                        export_default_kind,
+                        name,
+                    ));
+                statements.push(statement);
+            } else {
+                if let Expression::Identifier(id) = export_value
+                    && id.name == export_key
+                {
+                    // export default id
+                    let local = ast.module_export_name_identifier_reference(
+                        Span::default(),
+                        export_key.clone_in(ast.allocator),
+                    );
+
+                    let exported = ast.module_export_name_identifier_reference(
+                        Span::default(),
+                        export_key.clone_in(ast.allocator),
+                    );
+
+                    let specifier = ast.export_specifier(
+                        Span::default(),
+                        local,
+                        exported,
+                        ImportOrExportKind::Value,
+                    );
+
+                    let declaration = ast.alloc_export_named_declaration(
+                        Span::default(),
+                        None,
+                        ast.vec1(specifier),
+                        None,
+                        ImportOrExportKind::Value,
+                        None::<Box<_>>,
+                    );
+                    statements.push(Statement::ExportNamedDeclaration(declaration));
+                } else {
+                    // export { id }
+                    let binding_kind = ast.binding_pattern_kind_binding_identifier(
+                        Span::default(),
+                        export_key.clone_in(ast.allocator),
+                    );
+                    let binding_pattern = ast.binding_pattern(binding_kind, None::<Box<_>>, false);
+                    let var_declar = ast.variable_declarator(
+                        Span::default(),
+                        VariableDeclarationKind::Const,
+                        binding_pattern,
+                        Some(export_value.clone_in(ast.allocator)),
+                        false,
+                    );
+                    let var_declar = ast.variable_declaration(
+                        Span::default(),
+                        VariableDeclarationKind::Const,
+                        ast.vec1(var_declar),
+                        false,
+                    );
+                    let declaration = ast.declaration_from_variable(var_declar);
+                    let statement = ast.alloc_export_named_declaration(
+                        Span::default(),
+                        Some(declaration),
+                        ast.vec(),
+                        None,
+                        ImportOrExportKind::Value,
+                        None::<Box<_>>,
+                    );
+                    let statement = Statement::ExportNamedDeclaration(statement);
+                    statements.push(statement);
+                }
+            }
+        });
+        statements
     }
 
     pub fn gen_cjs_exports(&self, ast: &AstBuilder<'a>) -> Option<Statement<'a>> {
