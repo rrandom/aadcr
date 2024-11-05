@@ -2,17 +2,17 @@ use std::cell::RefCell;
 
 use indexmap::IndexMap;
 
-use oxc_allocator::{Allocator, Box, CloneIn, FromIn};
+use oxc_allocator::{Allocator, Box, CloneIn};
 use oxc_ast::{
     ast::{
-        Argument, AssignmentOperator, CallExpression, Expression, ExpressionStatement,
+        Argument, AssignmentOperator, Expression, ExpressionStatement,
         IdentifierName, ImportOrExportKind, ObjectPropertyKind, Program, PropertyKey, PropertyKind,
-        Statement, TSTypeAnnotation, VariableDeclarationKind, WithClause,
+        Statement, VariableDeclarationKind, WithClause,
     },
     AstBuilder, AstKind,
 };
 use oxc_semantic::{NodeId, ScopeTree, SemanticBuilder, SymbolTable};
-use oxc_span::{Atom, GetSpan, Span};
+use oxc_span::{GetSpan, Span};
 use oxc_traverse::{Traverse, TraverseCtx};
 
 use crate::unpacker::{
@@ -47,7 +47,7 @@ pub fn get_modules_form_webpack5<'a>(
         return None;
     };
 
-    let mut webpackBootstrap = NodeId::DUMMY;
+    let webpackBootstrap = NodeId::DUMMY;
 
     // println!("{:#?}", nodes.get_node(root_id));
 
@@ -368,7 +368,7 @@ impl<'a> Webpack5Impl<'a, '_> {
                 }
             }
         }
-        return found;
+        found
     }
 }
 

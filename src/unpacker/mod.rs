@@ -1,4 +1,4 @@
-use normpath::{BasePath, PathExt};
+use normpath::PathExt;
 
 use oxc_allocator::Allocator;
 use oxc_ast::ast::Program;
@@ -72,7 +72,7 @@ pub fn unpacker<'a>(
             // let file_name = format!("module_{}.js", module.id);
             let file_name = &module.id;
             let path = Path::new(output_dir)
-                .join(&file_name)
+                .join(file_name)
                 .normalize_virtually()
                 .unwrap();
 

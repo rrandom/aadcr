@@ -4,8 +4,7 @@ use oxc_allocator::{Allocator, Box, CloneIn};
 use oxc_ast::{
     ast::{
         Argument, ArrayExpressionElement, AssignmentExpression, AssignmentOperator, Expression,
-        IdentifierName, ImportOrExportKind, MemberExpression, Program, PropertyKind, Statement,
-        TSTypeAnnotation, VariableDeclarationKind, WithClause,
+        IdentifierName, ImportOrExportKind, MemberExpression, Program, PropertyKind, Statement, VariableDeclarationKind, WithClause,
     },
     AstBuilder, AstKind,
 };

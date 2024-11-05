@@ -1,6 +1,6 @@
 #![allow(clippy::print_stdout)]
 
-use std::{env, path::Path};
+use std::path::Path;
 
 use oxc_allocator::Allocator;
 use oxc_parser::Parser;
