@@ -5,7 +5,9 @@ use indexmap::IndexMap;
 use oxc_allocator::{Allocator, Box, CloneIn};
 use oxc_ast::{
     ast::{
-        Argument, AssignmentOperator, CallExpression, Expression, ExpressionStatement, IdentifierName, ImportOrExportKind, ObjectPropertyKind, Program, PropertyKey, PropertyKind, Statement, TSTypeAnnotation, VariableDeclarationKind, WithClause
+        Argument, AssignmentOperator, CallExpression, Expression, ExpressionStatement,
+        IdentifierName, ImportOrExportKind, ObjectPropertyKind, Program, PropertyKey, PropertyKind,
+        Statement, TSTypeAnnotation, VariableDeclarationKind, WithClause,
     },
     AstBuilder, AstKind,
 };
@@ -362,6 +364,7 @@ impl<'a> Traverse<'a> for Webpack5Impl<'a, '_> {
             .body
             .retain(|s| !matches!(s, Statement::EmptyStatement(_)));
         if *self.ctx.is_esm.borrow() {
+            // Generate export { ... }
             // println!("is esm: {:?}", self.ctx.is_esm.borrow());
             self.ctx
                 .module_exports
@@ -369,16 +372,15 @@ impl<'a> Traverse<'a> for Webpack5Impl<'a, '_> {
                 .borrow()
                 .iter()
                 .for_each(|(k, v)| {
-                    // println!("export: {:?} => {:?}", k, v);
+                    println!("export: {:?}", k);
+
                     let bindingidkind = ctx.ast.binding_pattern_kind_binding_identifier(
                         Span::default(),
                         k.clone_in(ctx.ast.allocator),
                     );
-                    let bd = ctx.ast.binding_pattern(
-                        bindingidkind,
-                        None::<Box<_>>,
-                        false,
-                    );
+                    let bd = ctx
+                        .ast
+                        .binding_pattern(bindingidkind, None::<Box<_>>, false);
                     let de = ctx.ast.variable_declarator(
                         v.span(),
                         VariableDeclarationKind::Const,
@@ -405,6 +407,8 @@ impl<'a> Traverse<'a> for Webpack5Impl<'a, '_> {
                     program.body.push(st);
                 });
         } else {
+            // Generate module.exports = { ... }
+
             if self.ctx.module_exports.exports.borrow().is_empty() {
                 return;
             }
@@ -473,7 +477,7 @@ impl<'a> Traverse<'a> for Webpack5Impl<'a, '_> {
             *node = ctx.ast.statement_empty(es_span);
         } else if let Some((name, arg)) = self.get_require_d(expr, ctx) {
             *node = ctx.ast.statement_empty(es_span);
-        }else if let Expression::SequenceExpression(seq) = expr {
+        } else if let Expression::SequenceExpression(seq) = expr {
             seq.expressions.retain(|expr| {
                 if let Some((name, arg)) = self.get_require_d(expr, ctx) {
                     return false;
