@@ -65,6 +65,16 @@ impl<'a> FunctionParamRenamer<'a> {
                         }
                     }
                 }
+                Expression::ArrowFunctionExpression(af) => {
+                    for param in af.params.items.iter() {
+                        if let BindingPatternKind::BindingIdentifier(binding) = &param.pattern.kind
+                        {
+                            if let Some(symbol_id) = binding.symbol_id.get() {
+                                symbol_ids.push(symbol_id);
+                            }
+                        }
+                    }
+                }
                 _ => return None,
             },
             _ => return None,
