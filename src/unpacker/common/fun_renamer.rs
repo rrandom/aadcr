@@ -115,16 +115,19 @@ impl<'a> Traverse<'a> for FunctionParamRenamer<'a> {
     }
 
     fn exit_program(&mut self, node: &mut Program<'a>, ctx: &mut TraverseCtx<'a>) {
-        if let Statement::ExpressionStatement(exp) = &node.body[0] {
-            let Expression::FunctionExpression(fun) = &exp.expression else {
-                return;
-            };
-            let Some(body) = &fun.body else {
-                return;
-            };
-            node.directives
-                .extend(body.directives.clone_in(self.allocator));
-            node.body = body.statements.clone_in(self.allocator);
-        }
+        let Statement::ExpressionStatement(exp) = &node.body[0] else {
+            return;
+        };
+        let fun_body = match &exp.expression {
+            Expression::FunctionExpression(fun) => fun.body.as_ref(),
+            Expression::ArrowFunctionExpression(af) => Some(&af.body),
+            _ => return,
+        };
+        let Some(body) = fun_body else {
+            return;
+        };
+        node.directives
+            .extend(body.directives.clone_in(self.allocator));
+        node.body = body.statements.clone_in(self.allocator);
     }
 }
