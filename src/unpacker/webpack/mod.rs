@@ -3,7 +3,6 @@ use oxc_ast::ast::Program;
 
 pub mod webpack4;
 pub mod webpack5;
-mod utils;
 
 use super::Module;
 use webpack5::get_modules_form_webpack5;

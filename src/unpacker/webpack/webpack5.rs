@@ -16,7 +16,7 @@ use oxc_span::{GetSpan, Span};
 use oxc_traverse::{Traverse, TraverseCtx};
 
 use crate::unpacker::{
-    common::{fun_renamer::FunctionParamRenamer, ModuleExportsStore},
+    common::{fun_to_program::FunctionToProgram, ModuleExportsStore},
     Module,
 };
 
@@ -179,7 +179,7 @@ pub fn get_modules_form_webpack5<'a>(
         );
 
         let mut fun_renamer =
-            FunctionParamRenamer::new(allocator, ["module", "exports", "require"]);
+            FunctionToProgram::new(allocator, ["module", "exports", "require"]);
         fun_renamer.build(&mut program);
 
         let ret = WebPack5::new(allocator, "").build(&mut program);

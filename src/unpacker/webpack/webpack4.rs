@@ -12,7 +12,7 @@ use oxc_semantic::{NodeId, ScopeTree, SemanticBuilder, SymbolTable};
 use oxc_span::{Atom, GetSpan, Span};
 use oxc_traverse::{Traverse, TraverseCtx};
 
-use crate::unpacker::common::{fun_renamer::FunctionParamRenamer, ModuleExportsStore};
+use crate::unpacker::common::{fun_to_program::FunctionToProgram, ModuleExportsStore};
 use crate::unpacker::Module;
 
 pub fn get_modules_form_webpack4<'a>(
@@ -135,7 +135,7 @@ pub fn get_modules_form_webpack4<'a>(
             ast.vec1(fun_statement),
         );
         let mut fun_renamer =
-            FunctionParamRenamer::new(allocator, ["module", "exports", "require"]);
+            FunctionToProgram::new(allocator, ["module", "exports", "require"]);
         fun_renamer.build(&mut program);
 
         let ret = WebPack4::new(allocator, "").build(&mut program);

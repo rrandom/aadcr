@@ -1,18 +1,20 @@
 use std::cell::RefCell;
 
 use oxc_allocator::{Allocator, CloneIn};
-use oxc_ast::ast::{BindingPatternKind, Expression, IdentifierReference, Program, Statement};
+use oxc_ast::ast::{BindingPatternKind, IdentifierReference, Program, Statement};
 use oxc_semantic::{ScopeTree, SemanticBuilder, SymbolId, SymbolTable};
 use oxc_span::Atom;
 use oxc_traverse::{Traverse, TraverseCtx};
 
-pub struct FunctionParamRenamer<'a> {
+use super::utils::{get_fun_body, get_fun_params};
+
+pub struct FunctionToProgram<'a> {
     allocator: &'a Allocator,
     param_ids: RefCell<std::vec::Vec<SymbolId>>,
     rename_to: std::vec::Vec<Atom<'a>>,
 }
 
-impl<'a> FunctionParamRenamer<'a> {
+impl<'a> FunctionToProgram<'a> {
     pub fn new(
         allocator: &'a Allocator,
         rename_to: impl IntoIterator<Item = impl Into<Atom<'a>>>,
@@ -53,31 +55,25 @@ impl<'a> FunctionParamRenamer<'a> {
         program: &Program<'a>,
     ) -> Option<std::vec::Vec<SymbolId>> {
         let mut symbol_ids = vec![];
-        match &program.body[0] {
-            Statement::ExpressionStatement(es) => match &es.expression {
-                Expression::FunctionExpression(f) => {
-                    for param in f.params.items.iter() {
-                        if let BindingPatternKind::BindingIdentifier(binding) = &param.pattern.kind
-                        {
-                            if let Some(symbol_id) = binding.symbol_id.get() {
-                                symbol_ids.push(symbol_id);
-                            }
-                        }
-                    }
-                }
-                Expression::ArrowFunctionExpression(af) => {
-                    for param in af.params.items.iter() {
-                        if let BindingPatternKind::BindingIdentifier(binding) = &param.pattern.kind
-                        {
-                            if let Some(symbol_id) = binding.symbol_id.get() {
-                                symbol_ids.push(symbol_id);
-                            }
-                        }
-                    }
-                }
-                _ => return None,
-            },
+        let Some(stmt) = program.body.first() else {
+            return None;
+        };
+
+        let Some(params) = (match stmt {
+            Statement::ExpressionStatement(es) => get_fun_params(&es.expression),
             _ => return None,
+        }) else {
+            return None;
+        };
+
+        for param in params.iter() {
+            let BindingPatternKind::BindingIdentifier(binding) = &param.pattern.kind else {
+                continue;
+            };
+            let Some(symbol_id) = binding.symbol_id.get() else {
+                continue;
+            };
+            symbol_ids.push(symbol_id);
         }
         Some(symbol_ids)
     }
@@ -94,7 +90,7 @@ impl<'a> FunctionParamRenamer<'a> {
     }
 }
 
-impl<'a> Traverse<'a> for FunctionParamRenamer<'a> {
+impl<'a> Traverse<'a> for FunctionToProgram<'a> {
     fn enter_identifier_reference(
         &mut self,
         idf: &mut IdentifierReference<'a>,
@@ -114,20 +110,16 @@ impl<'a> Traverse<'a> for FunctionParamRenamer<'a> {
         }
     }
 
-    fn exit_program(&mut self, node: &mut Program<'a>, ctx: &mut TraverseCtx<'a>) {
-        let Statement::ExpressionStatement(exp) = &node.body[0] else {
+    fn exit_program(&mut self, program: &mut Program<'a>, _ctx: &mut TraverseCtx<'a>) {
+        let Statement::ExpressionStatement(exp) = &program.body[0] else {
             return;
         };
-        let fun_body = match &exp.expression {
-            Expression::FunctionExpression(fun) => fun.body.as_ref(),
-            Expression::ArrowFunctionExpression(af) => Some(&af.body),
-            _ => return,
-        };
-        let Some(body) = fun_body else {
+        let Some(body) = get_fun_body(&exp.expression) else {
             return;
         };
-        node.directives
+        program
+            .directives
             .extend(body.directives.clone_in(self.allocator));
-        node.body = body.statements.clone_in(self.allocator);
+        program.body = body.statements.clone_in(self.allocator);
     }
 }

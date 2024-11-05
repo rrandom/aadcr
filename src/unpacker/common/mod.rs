@@ -4,7 +4,8 @@ use std::cell::RefCell;
 use oxc_ast::ast::Expression;
 use oxc_span::Atom;
 
-pub mod fun_renamer;
+pub mod fun_to_program;
+pub mod utils;
 
 pub struct ModuleExportsStore<'a> {
     pub exports: RefCell<IndexMap<Atom<'a>, Expression<'a>>>,
