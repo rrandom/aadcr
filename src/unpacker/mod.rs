@@ -1,3 +1,5 @@
+use normpath::{BasePath, PathExt};
+
 use oxc_allocator::Allocator;
 use oxc_ast::ast::Program;
 use oxc_codegen::CodeGenerator;
@@ -12,14 +14,14 @@ pub mod webpack;
 use webpack::get_modules_form_webpack;
 
 pub struct Module<'a> {
-    pub id: usize,
+    pub id: String,
     pub is_entry: bool,
     pub content: Program<'a>,
     pub code: Option<String>,
 }
 
 impl<'a> Module<'a> {
-    pub fn new(id: usize, is_entry: bool, content: Program<'a>) -> Self {
+    pub fn new(id: String, is_entry: bool, content: Program<'a>) -> Self {
         Self {
             id,
             is_entry,
@@ -65,18 +67,24 @@ pub fn unpacker<'a>(
     let mut modules = unpack(allocator, program);
 
     if !modules.is_empty() {
-        fs::create_dir_all(output_dir).unwrap_or_else(|e| {
-            eprintln!("Failed to create output directory: {}", e);
-        });
-
         for module in modules.iter_mut() {
             module.write_code();
-            let file_name = format!("module_{}.js", module.id);
-            let path = Path::new(output_dir).join(file_name);
+            // let file_name = format!("module_{}.js", module.id);
+            let file_name = &module.id;
+            let path = Path::new(output_dir)
+                .join(&file_name)
+                .normalize_virtually()
+                .unwrap();
+
+            if let Ok(Some(parent)) = path.parent() {
+                fs::create_dir_all(parent).unwrap_or_else(|e| {
+                    eprintln!("Failed to create directory {:?}: {}", parent, e);
+                });
+            }
 
             // println!("write to {:?}", path);
             fs::write(&path, module.code.as_ref().unwrap()).unwrap();
-            files.push(path);
+            files.push(path.into_path_buf());
         }
         UnpackerResult { files, modules }
     } else {

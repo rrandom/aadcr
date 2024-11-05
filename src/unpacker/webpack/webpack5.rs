@@ -1,23 +1,39 @@
 use indexmap::IndexMap;
 
-use oxc_allocator::Allocator;
+use oxc_allocator::{Allocator, CloneIn};
 use oxc_ast::{
     ast::{
         CallExpression, Expression, ExpressionStatement, ObjectPropertyKind, Program, Statement,
     },
-    AstKind,
+    AstBuilder, AstKind,
 };
 use oxc_semantic::{NodeId, SemanticBuilder};
+use oxc_span::Span;
 
-use crate::unpacker::Module;
+use crate::unpacker::{common::fun_renamer::FunctionParamRenamer, Module};
 
 pub fn get_modules_form_webpack5<'a>(
     allocator: &'a Allocator,
     program: &Program<'a>,
 ) -> Option<std::vec::Vec<Module<'a>>> {
+    let ast = AstBuilder::new(allocator);
+
     let semantic = SemanticBuilder::new("").build(program).semantic;
 
     let nodes = semantic.nodes();
+    let program_source_type = nodes
+        .root()
+        .map(|id| nodes.get_node(id).kind().as_program().unwrap().source_type);
+
+    let program_directives = nodes.root().map(|id| {
+        nodes
+            .get_node(id)
+            .kind()
+            .as_program()
+            .unwrap()
+            .directives
+            .clone_in(allocator)
+    });
 
     let Some(root_id) = nodes.root() else {
         return None;
@@ -27,7 +43,8 @@ pub fn get_modules_form_webpack5<'a>(
 
     // println!("{:#?}", nodes.get_node(root_id));
 
-    let mut modules = IndexMap::new();
+    let mut moduleMap = IndexMap::new();
+    let mut modules = vec![];
 
     for node in nodes.iter() {
         match node.kind() {
@@ -91,9 +108,19 @@ pub fn get_modules_form_webpack5<'a>(
                                     continue;
                                 };
                                 let module_id = &s.value;
-                                println!("====> module_id {:?}", module_id);
+                                // println!("====> module_id {:?}", module_id);
 
-                                modules.insert(module_id, obj_prop.value.without_parentheses());
+                                let expr = obj_prop.value.without_parentheses();
+
+                                match expr {
+                                    Expression::ArrowFunctionExpression(_)
+                                    | Expression::FunctionExpression(_) => {}
+                                    _ => {
+                                        continue;
+                                    }
+                                }
+
+                                moduleMap.insert(module_id, expr);
                             }
                         }
                     }
@@ -104,9 +131,29 @@ pub fn get_modules_form_webpack5<'a>(
         }
     }
 
-    for (module_id, expr) in modules {
+    for (module_id, expr) in moduleMap.iter() {
         println!("====> module_id {:?} {:?}", module_id, expr);
+
+        let fun_statement = ast.statement_expression(Span::default(), expr.clone_in(allocator));
+
+        let directives = program_directives
+            .clone_in(allocator)
+            .unwrap_or_else(|| ast.vec());
+
+        let mut program = ast.program(
+            Span::default(),
+            program_source_type.unwrap().clone_in(allocator),
+            None,
+            directives,
+            ast.vec1(fun_statement),
+        );
+
+        let mut fun_renamer =
+            FunctionParamRenamer::new(allocator, ["module", "exports", "require"]);
+        fun_renamer.build(&mut program);
+
+        modules.push(Module::new(module_id.to_string(), false, program));
     }
 
-    None
+    Some(modules)
 }

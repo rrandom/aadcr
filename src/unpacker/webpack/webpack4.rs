@@ -117,7 +117,7 @@ pub fn get_modules_form_webpack4<'a>(
     println!("module_funs len: {:?}", module_funs.len());
 
     let mut modules = vec![];
-    for (module_id, fun) in module_funs.iter_mut().enumerate() {
+    for (module_id, fun) in module_funs.iter().enumerate() {
         let new_fun = fun.clone_in(allocator);
 
         let ast = AstBuilder::new(allocator);
@@ -144,7 +144,7 @@ pub fn get_modules_form_webpack4<'a>(
 
         let is_entry = entry_ids.contains(&(module_id as f64));
 
-        modules.push(Module::new(module_id, is_entry, program));
+        modules.push(Module::new(module_id.to_string(), is_entry, program));
     }
 
     Some(modules)
