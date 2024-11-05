@@ -1,0 +1,65 @@
+---
+source: tests/webpack5.rs
+assertion_line: 39
+snapshot_kind: text
+---
+[
+    Module {id: ./src/1.js, is_entry: false, code: `function m1() {
+    	console.log("m1");
+    }
+    export default m1;
+    ` },
+    Module {id: ./src/a.js, is_entry: false, code: `class A {
+    	constructor() {
+    		this.label = "a";
+    	}
+    	print() {
+    		console.log("a", this.version);
+    	}
+    }
+    class A_A {
+    	constructor() {
+    		this.label = "a_a";
+    	}
+    }
+    export { A };
+    export { A_A };
+    ` },
+    Module {id: ./src/b.js, is_entry: false, code: `const version = "1.0.0";
+    function __WEBPACK_DEFAULT_EXPORT__() {
+    	console.log("b", version);
+    }
+    export default __WEBPACK_DEFAULT_EXPORT__;
+    export { version };
+    ` },
+    Module {id: ./src/c.js, is_entry: false, code: `var _b_js__WEBPACK_IMPORTED_MODULE_0__ = require("./src/b.js");
+    const getC = async () => {
+    	console.log("c.a", _b_js__WEBPACK_IMPORTED_MODULE_0__.version);
+    	const result = await fetch("https://jsonplaceholder.typicode.com/todos/1");
+    	const json = await result.json();
+    	return json;
+    };
+    export { getC };
+    ` },
+    Module {id: ./src/d.js, is_entry: false, code: `var _a_js__WEBPACK_IMPORTED_MODULE_0__ = require("./src/a.js");
+    export const A = _a_js__WEBPACK_IMPORTED_MODULE_0__.A;
+    export const A_A = _a_js__WEBPACK_IMPORTED_MODULE_0__.A_A;
+    ` },
+    Module {id: ./src/e.js, is_entry: false, code: `var _a_js__WEBPACK_IMPORTED_MODULE_0__ = require("./src/a.js");
+    export const A = _a_js__WEBPACK_IMPORTED_MODULE_0__.A;
+    ` },
+    Module {id: entry.js, is_entry: false, code: `__webpack_require__.r(__webpack_exports__);
+    var _1_js__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__("./src/1.js");
+    var _a_js__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__("./src/a.js");
+    var _b_js__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__("./src/b.js");
+    var _c_js__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__("./src/c.js");
+    var _d_js__WEBPACK_IMPORTED_MODULE_4__ = __webpack_require__("./src/d.js");
+    var _e_js__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__("./src/e.js");
+    const d = new _d_js__WEBPACK_IMPORTED_MODULE_4__.A();
+    const e = new _e_js__WEBPACK_IMPORTED_MODULE_5__.A();
+    console.log(_b_js__WEBPACK_IMPORTED_MODULE_2__.version, _a_js__WEBPACK_IMPORTED_MODULE_1__.A, d, e);
+    (0, _b_js__WEBPACK_IMPORTED_MODULE_2__["default"])();
+    (0, _c_js__WEBPACK_IMPORTED_MODULE_3__.getC)().then(console.log);
+    (0, _1_js__WEBPACK_IMPORTED_MODULE_0__["default"])();
+    ` },
+]

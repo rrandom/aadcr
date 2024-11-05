@@ -2,7 +2,7 @@ use std::cell::RefCell;
 
 use indexmap::IndexMap;
 
-use oxc_allocator::{Allocator, Box, CloneIn};
+use oxc_allocator::{Allocator, Box, CloneIn, FromIn};
 use oxc_ast::{
     ast::{
         Argument, AssignmentOperator, CallExpression, Expression, ExpressionStatement,
@@ -128,8 +128,30 @@ pub fn get_modules_form_webpack5<'a>(
                                     }
                                 }
 
-                                moduleMap.insert(module_id, expr);
+                                moduleMap.insert(module_id.as_str(), expr);
                             }
+                        }
+
+                        let last = body.statements.last();
+
+                        if let Some(Statement::ExpressionStatement(expr)) = last {
+                            let Expression::CallExpression(expr) =
+                                expr.expression.without_parentheses()
+                            else {
+                                continue;
+                            };
+
+                            let expr = expr.callee.without_parentheses();
+
+                            match expr {
+                                Expression::ArrowFunctionExpression(_)
+                                | Expression::FunctionExpression(_) => {}
+                                _ => {
+                                    continue;
+                                }
+                            }
+
+                            moduleMap.insert("entry.js", expr);
                         }
                     }
                     _ => {}
@@ -139,7 +161,7 @@ pub fn get_modules_form_webpack5<'a>(
         }
     }
 
-    for (module_id, expr) in moduleMap.iter() {
+    for (module_id, expr) in moduleMap {
         // println!("====> module_id {:?} {:?}", module_id, expr);
 
         let fun_statement = ast.statement_expression(Span::default(), expr.clone_in(allocator));
@@ -368,7 +390,7 @@ impl<'a> Traverse<'a> for Webpack5Impl<'a, '_> {
                 .borrow()
                 .iter()
                 .for_each(|(k, v)| {
-                    println!("export: {:?}", k);
+                    // println!("export: {:?}", k);
 
                     if k.as_str() == "default" {
                         let name = ctx.ast.module_export_name_identifier_reference(
