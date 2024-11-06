@@ -8,7 +8,7 @@ use oxc_ast::{
     },
     AstBuilder, AstKind,
 };
-use oxc_semantic::{NodeId, ScopeTree, SemanticBuilder, SymbolTable};
+use oxc_semantic::{ScopeTree, SemanticBuilder, SymbolTable};
 use oxc_span::{Atom, GetSpan, Span};
 use oxc_traverse::{Traverse, TraverseCtx};
 

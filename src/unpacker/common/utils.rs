@@ -21,12 +21,14 @@ pub fn get_fun_body<'a, 'b>(
     }
 }
 
-// TO-DO
-pub fn is_iife(expression: &Expression<'_>) -> bool {
-    matches!(
-        expression.without_parentheses(),
-        Expression::CallExpression(_)
-    )
+pub fn get_iife_callee<'a, 'b>(expression: &'b Expression<'a>) -> Option<&'b Expression<'a>> {
+    use oxc_ast::ast::UnaryOperator;
+    let node = match expression.without_parentheses() {
+        Expression::UnaryExpression(ue) if ue.operator == UnaryOperator::LogicalNot => &ue.argument,
+        Expression::CallExpression(call_expr) => &call_expr.callee,
+        _ => return None,
+    };
+    Some(node.without_parentheses())
 }
 
 ///  Return `true` if `require.r` exists.    

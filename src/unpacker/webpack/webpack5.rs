@@ -1,6 +1,5 @@
-use std::cell::RefCell;
-
 use indexmap::IndexMap;
+use std::cell::RefCell;
 
 use oxc_allocator::{Allocator, CloneIn};
 use oxc_ast::{
@@ -54,11 +53,8 @@ pub fn get_modules_form_webpack5<'a>(
             AstKind::ExpressionStatement(ExpressionStatement { expression, .. })
                 if nodes.parent_id(node.id()) == Some(root_id) =>
             {
-                let Expression::CallExpression(call_expr) = expression.without_parentheses() else {
-                    continue;
-                };
-
-                let Some(fun_body) = utils::get_fun_body(call_expr.callee.without_parentheses())
+                let Some(fun_body) = utils::get_iife_callee(expression)
+                    .and_then(|fun_expr| utils::get_fun_body(fun_expr))
                 else {
                     continue;
                 };
@@ -102,17 +98,14 @@ pub fn get_modules_form_webpack5<'a>(
                 let last_st = fun_body.statements.last();
 
                 if let Some(Statement::ExpressionStatement(expr)) = last_st {
-                    let Expression::CallExpression(expr) = expr.expression.without_parentheses()
-                    else {
+                    let Some(fun_expr) = utils::get_iife_callee(&expr.expression) else {
                         continue;
                     };
 
-                    let expr = expr.callee.without_parentheses();
-
-                    match expr {
+                    match fun_expr {
                         Expression::ArrowFunctionExpression(_)
                         | Expression::FunctionExpression(_) => {
-                            module_map.insert("entry.js", expr);
+                            module_map.insert("entry.js", fun_expr);
                         }
                         _ => {
                             continue;
