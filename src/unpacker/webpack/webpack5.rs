@@ -11,7 +11,7 @@ use oxc_ast::{
     AstBuilder, AstKind,
 };
 use oxc_semantic::{ScopeTree, SemanticBuilder, SymbolTable};
-use oxc_span::{Span};
+use oxc_span::Span;
 use oxc_traverse::{Traverse, TraverseCtx};
 
 use crate::unpacker::{
@@ -227,35 +227,27 @@ impl<'a> Webpack5Impl<'a, '_> {
         utils::is_esm_helper(expr)
     }
 
-    /**
-     * This function will return a map of key and module content.
-     *
-     * `require.d` is a webpack helper function
-     * that defines getter functions for harmony exports.
-     * It's used to convert ESM exports to CommonJS exports.
-     *
-     * Example:
-     * ```js
-     * require.d(exports, {
-     *   "default": getter,
-     *   [key]: getter
-     * })
-     * ```
-     */
+    /// if a call expression is `require.d`, return true, and add exports to module_exports
+    /// ```js
+    /// require.d(exports, {
+    ///   "default": getter,
+    ///   [key]: getter
+    /// })
+    /// ```
     fn get_require_d<'b>(&self, expr: &'b Expression<'a>, ctx: &TraverseCtx<'a>) -> bool {
         let mut found = false;
         let Expression::CallExpression(call_expr) = expr else {
             return false;
         };
-        let Expression::StaticMemberExpression(mem) = &call_expr.callee else {
+        let Expression::StaticMemberExpression(mem_expr) = &call_expr.callee else {
             return false;
         };
-        let (Expression::Identifier(idf), IdentifierName { name, .. }) =
-            (&mem.object, &mem.property)
+        let (Expression::Identifier(idr), IdentifierName { name, .. }) =
+            (&mem_expr.object, &mem_expr.property)
         else {
             return false;
         };
-        if name.as_str() != "d" || idf.name != "require" {
+        if name.as_str() != "d" || idr.name != "require" {
             return false;
         };
         let [Argument::Identifier(_), Argument::ObjectExpression(obj)] =
@@ -263,11 +255,14 @@ impl<'a> Webpack5Impl<'a, '_> {
         else {
             return false;
         };
+        if obj.properties.len() == 0 {
+            return false;
+        }
         for prop in obj.properties.iter() {
             let ObjectPropertyKind::ObjectProperty(obj_prop) = prop else {
                 return false;
             };
-            let k = match &obj_prop.key {
+            let export_name = match &obj_prop.key {
                 PropertyKey::StringLiteral(s) => &s.value,
                 PropertyKey::StaticIdentifier(s) => &s.name,
                 _ => {
@@ -275,45 +270,41 @@ impl<'a> Webpack5Impl<'a, '_> {
                 }
             };
 
-            let body = match &obj_prop.value.without_parentheses() {
-                Expression::FunctionExpression(s) => s.body.as_ref(),
-                Expression::ArrowFunctionExpression(s) => Some(&s.body),
-                _ => {
-                    return false;
-                }
-            };
-
-            let Some(body) = body else {
+            let Some(fun_body) = utils::get_fun_body(&obj_prop.value.without_parentheses()) else {
                 // TO-DO
-                // if (defineObject.properties.length === 0) {
-                //     path.prune()
-                // }
+                // add a warning
                 return false;
             };
-            if body.statements.len() == 1 {
-                match &body.statements[0] {
+
+            if fun_body.statements.len() == 1 {
+                match &fun_body.statements[0] {
                     Statement::ReturnStatement(ret) => {
                         if let Some(arg) = &ret.argument {
-                            self.ctx
-                                .module_exports
-                                .insert_export(k.clone(), arg.clone_in(ctx.ast.allocator));
+                            self.ctx.module_exports.insert_export(
+                                export_name.clone(),
+                                arg.without_parentheses().clone_in(ctx.ast.allocator),
+                            );
                             found = true;
                         }
                     }
-                    Statement::ExpressionStatement(es) => {
-                        let arg = es.expression.without_parentheses();
+                    Statement::ExpressionStatement(expr) => {
+                        let export_value = expr.expression.without_parentheses();
                         if matches!(
-                            arg,
+                            export_value,
                             Expression::Identifier(_) | Expression::StaticMemberExpression(_)
                         ) {
-                            self.ctx
-                                .module_exports
-                                .insert_export(k.clone(), arg.clone_in(ctx.ast.allocator));
+                            self.ctx.module_exports.insert_export(
+                                export_name.clone(),
+                                export_value.clone_in(ctx.ast.allocator),
+                            );
                             found = true;
                         }
                     }
                     _ => {}
                 }
+            } else {
+                // TO-DO
+                // add a warning
             }
         }
         found
@@ -327,11 +318,9 @@ impl<'a> Traverse<'a> for Webpack5Impl<'a, '_> {
             .retain(|s| !matches!(s, Statement::EmptyStatement(_)));
 
         if *self.ctx.is_esm.borrow() {
-            // Generate export { ... }
             let statements = self.ctx.module_exports.gen_esm_exports(&ctx.ast);
             program.body.extend(statements);
         } else {
-            // Generate module.exports = { ... }
             if let Some(statement) = self.ctx.module_exports.gen_cjs_exports(&ctx.ast) {
                 program.body.push(statement);
             }
@@ -345,7 +334,6 @@ impl<'a> Traverse<'a> for Webpack5Impl<'a, '_> {
 
         let es_span = es.span;
         let expr = &mut es.expression;
-        // if the expression is a esm helper function, set is_esm to true and replace the statement with empty statement
         if self.is_esm(expr, ctx) {
             self.ctx.is_esm.replace(true);
             *statement = ctx.ast.statement_empty(es_span);
@@ -362,6 +350,7 @@ impl<'a> Traverse<'a> for Webpack5Impl<'a, '_> {
     }
 
     fn exit_statement(&mut self, statement: &mut Statement<'a>, ctx: &mut TraverseCtx<'a>) {
+        // clean up empty sequence expression
         let Statement::ExpressionStatement(es) = statement else {
             return;
         };

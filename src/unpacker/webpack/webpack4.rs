@@ -283,11 +283,9 @@ impl<'a> Traverse<'a> for Webpack4Impl<'a, '_> {
             .retain(|s| !matches!(s, Statement::EmptyStatement(_)));
 
         if *self.ctx.is_esm.borrow() {
-            // Generate export { ... }
             let statements = self.ctx.module_exports.gen_esm_exports(&ctx.ast);
             program.body.extend(statements);
         } else {
-            // Generate module.exports = { ... }
             if let Some(statement) = self.ctx.module_exports.gen_cjs_exports(&ctx.ast) {
                 program.body.push(statement);
             }

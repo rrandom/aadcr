@@ -32,6 +32,7 @@ impl<'a> ModuleExportsStore<'a> {
         self.exports.borrow_mut().insert(name, expr);
     }
 
+    /// Generate `export { ... }`
     pub fn gen_esm_exports(&self, ast: &AstBuilder<'a>) -> Vec<Statement<'a>> {
         use ast::{ImportOrExportKind, VariableDeclarationKind};
         use oxc_allocator::Box;
@@ -57,7 +58,7 @@ impl<'a> ModuleExportsStore<'a> {
             } else if let Expression::Identifier(id) = export_value
                 && id.name == export_key
             {
-                // export default id
+                // export id
                 let local =
                     ast.module_export_name_identifier_reference(Span::default(), export_key);
 
@@ -81,7 +82,7 @@ impl<'a> ModuleExportsStore<'a> {
                 );
                 statements.push(Statement::ExportNamedDeclaration(declaration));
             } else {
-                // export { id }
+                // export { ida: idb }
                 let binding_kind =
                     ast.binding_pattern_kind_binding_identifier(Span::default(), export_key);
                 let binding_pattern = ast.binding_pattern(binding_kind, None::<Box<_>>, false);
@@ -114,6 +115,7 @@ impl<'a> ModuleExportsStore<'a> {
         statements
     }
 
+    /// Generate `module.exports = { ... }`
     pub fn gen_cjs_exports(&self, ast: &AstBuilder<'a>) -> Option<Statement<'a>> {
         use ast::{AssignmentOperator, PropertyKind};
 
