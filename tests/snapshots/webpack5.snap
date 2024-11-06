@@ -48,7 +48,7 @@ snapshot_kind: text
     Module {id: ./src/e.js, is_entry: false, code: `var _a_js__WEBPACK_IMPORTED_MODULE_0__ = require("./src/a.js");
     export const A = _a_js__WEBPACK_IMPORTED_MODULE_0__.A;
     ` },
-    Module {id: entry.js, is_entry: false, code: `__webpack_require__.r(__webpack_exports__);
+    Module {id: entry.js, is_entry: true, code: `__webpack_require__.r(__webpack_exports__);
     var _1_js__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__("./src/1.js");
     var _a_js__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__("./src/a.js");
     var _b_js__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__("./src/b.js");

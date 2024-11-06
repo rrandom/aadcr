@@ -144,7 +144,11 @@ pub fn get_modules_form_webpack5<'a>(
 
         let _ret = WebPack5::new(allocator, "").build(&mut program);
 
-        modules.push(Module::new(module_id.to_string(), false, program));
+        modules.push(Module::new(
+            module_id.to_string(),
+            module_id == "entry.js",
+            program,
+        ));
     }
 
     Some(modules)
@@ -270,7 +274,7 @@ impl<'a> Webpack5Impl<'a, '_> {
                 }
             };
 
-            let Some(fun_body) = utils::get_fun_body(&obj_prop.value.without_parentheses()) else {
+            let Some(fun_body) = utils::get_fun_body(obj_prop.value.without_parentheses()) else {
                 // TO-DO
                 // add a warning
                 return false;
@@ -320,10 +324,8 @@ impl<'a> Traverse<'a> for Webpack5Impl<'a, '_> {
         if *self.ctx.is_esm.borrow() {
             let statements = self.ctx.module_exports.gen_esm_exports(&ctx.ast);
             program.body.extend(statements);
-        } else {
-            if let Some(statement) = self.ctx.module_exports.gen_cjs_exports(&ctx.ast) {
-                program.body.push(statement);
-            }
+        } else if let Some(statement) = self.ctx.module_exports.gen_cjs_exports(&ctx.ast) {
+            program.body.push(statement);
         }
     }
 

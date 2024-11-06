@@ -9,7 +9,7 @@ use oxc_ast::{
     AstBuilder, AstKind,
 };
 use oxc_semantic::{NodeId, ScopeTree, SemanticBuilder, SymbolTable};
-use oxc_span::{Atom, Span};
+use oxc_span::{Atom, GetSpan, Span};
 use oxc_traverse::{Traverse, TraverseCtx};
 
 use crate::unpacker::common::{fun_to_program::FunctionToProgram, utils, ModuleExportsStore};
@@ -19,13 +19,16 @@ pub fn get_modules_form_webpack4<'a>(
     allocator: &'a Allocator,
     program: &Program<'a>,
 ) -> Option<std::vec::Vec<Module<'a>>> {
+    let ast = AstBuilder::new(allocator);
+
     let semantic = SemanticBuilder::new("").build(program).semantic;
 
     let mut factory_id = None;
     let mut entry_ids = vec![];
-    let mut factory_callee_id = NodeId::DUMMY;
+    let mut factory_callee_span = Some(Span::default());
 
     let mut module_funs = vec![];
+    let mut modules = vec![];
 
     let nodes = semantic.nodes();
     let program_source_type = nodes
@@ -43,64 +46,51 @@ pub fn get_modules_form_webpack4<'a>(
 
     for node in nodes.iter() {
         match node.kind() {
-            // TO-DO: using `.root` should work too
-            AstKind::Program(Program { .. }) => {}
-            AstKind::CallExpression(call) => {
-                if call.arguments.len() == 1 {
-                    if let Expression::ArrayExpression(arr) =
-                        call.arguments[0].as_expression().unwrap()
-                    {
-                        let all_is_fun = arr
-                            .elements
-                            .iter()
-                            .all(|d| matches!(d, ArrayExpressionElement::FunctionExpression(_)));
-                        if all_is_fun && factory_id.is_none() {
-                            // println!("Found? {:?}", node.id());
-                            factory_id = Some(node.id());
-                            println!("arr len: {:?}", arr.elements.len());
-                            for fun in arr.elements.iter() {
-                                if let ArrayExpressionElement::FunctionExpression(fun) = fun {
-                                    // println!("fun: {:#?}", fun);
-                                    module_funs.push(fun);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+            AstKind::CallExpression(call_expr) => {
+                if let Some(Expression::ArrayExpression(arr)) = call_expr
+                    .arguments
+                    .first()
+                    .and_then(|arg| arg.as_expression())
+                    .map(|expr| expr.without_parentheses())
+                    && call_expr.arguments.len() == 1
+                    && factory_id.is_none()
+                {
+                    let all_is_fun = arr
+                        .elements
+                        .iter()
+                        .all(|ele| matches!(ele, ArrayExpressionElement::FunctionExpression(_)));
 
-            // TO-DO: using without_parentheses
-            AstKind::ParenthesizedExpression(pe) => {
-                if let Some(id) = nodes.parent_id(node.id()) {
-                    if Some(id) == factory_id {
-                        factory_callee_id = node.id();
+                    if all_is_fun {
+                        factory_id = Some(node.id());
+                        factory_callee_span = Some(call_expr.callee.without_parentheses().span());
+                        for fun in arr.elements.iter() {
+                            let ArrayExpressionElement::FunctionExpression(fun) = fun else {
+                                unreachable!()
+                            };
+                            module_funs.push(fun);
+                        }
                     }
                 }
             }
             AstKind::AssignmentExpression(AssignmentExpression {
                 left,
-                right: Expression::NumericLiteral(s),
+                right: Expression::NumericLiteral(num),
                 ..
             }) => {
-                let contains = semantic
-                    .nodes()
-                    .ancestors(node.id())
-                    .any(|id| id == factory_callee_id);
-                if !contains {
+                // span based comparison of factory callee
+                let Some(factory_callee_span) = factory_callee_span else {
                     continue;
-                }
-                if let Some(MemberExpression::StaticMemberExpression(mm)) =
-                    left.as_member_expression()
-                {
-                    if mm.object.is_identifier_reference() && mm.property.name.as_str() == "s" {
-                        // println!("Member: {:?}", mm);
-                        // println!(
-                        //     "assign: {} with {}",
-                        //     // span.source_text(semantic.source_text()),
-                        //     1,
-                        //     s.value
-                        // );
-                        entry_ids.push(s.value);
+                };
+                for parent in nodes.iter_parents(node.id()) {
+                    if let AstKind::CallExpression(s) = parent.kind()
+                        && let callee_span = s.callee.without_parentheses().span()
+                        && callee_span == factory_callee_span
+                        && let Some(MemberExpression::StaticMemberExpression(mem_expr)) =
+                            left.as_member_expression()
+                        && mem_expr.object.is_identifier_reference()
+                        && mem_expr.property.name.as_str() == "s"
+                    {
+                        entry_ids.push(num.value);
                     }
                 }
             }
@@ -108,18 +98,9 @@ pub fn get_modules_form_webpack4<'a>(
         }
     }
 
-    // println!(
-    //     "factory: {:?} ard_id: {:?}, ae_id: {:?}, module_fun_ids: {:?}, entry_ids: {:?} and moduleFuns: {:?}",
-    //     factory_id, factory_arg_id, factory_arg_ele_id, module_fun_ids, entry_ids, module_funs
-    // );
-
-    println!("module_funs len: {:?}", module_funs.len());
-
-    let mut modules = vec![];
     for (module_id, fun) in module_funs.iter().enumerate() {
         let new_fun = fun.clone_in(allocator);
 
-        let ast = AstBuilder::new(allocator);
         let fun_statement =
             ast.statement_expression(fun.span, ast.expression_from_function(new_fun));
 
@@ -137,8 +118,7 @@ pub fn get_modules_form_webpack4<'a>(
         let mut fun_renamer = FunctionToProgram::new(allocator, ["module", "exports", "require"]);
         fun_renamer.build(&mut program);
 
-        let ret = WebPack4::new(allocator, "").build(&mut program);
-        // println!("ret: {:?}", ret);
+        let _ret = WebPack4::new(allocator, "").build(&mut program);
 
         let is_entry = entry_ids.contains(&(module_id as f64));
 
@@ -148,7 +128,6 @@ pub fn get_modules_form_webpack4<'a>(
     Some(modules)
 }
 
-// a export is a return statement argument or a identifier reference
 struct Webpack4Ctx<'a> {
     pub source_text: &'a str,
     pub is_esm: RefCell<bool>,
@@ -221,19 +200,20 @@ impl<'a, 'ctx> Webpack4Impl<'a, 'ctx> {
 
 impl<'a> Webpack4Impl<'a, '_> {
     #[inline]
-    fn is_esm(&self, expr: &Expression<'a>, ctx: &TraverseCtx<'a>) -> bool {
+    fn is_esm(&self, expr: &Expression<'a>, _ctx: &TraverseCtx<'a>) -> bool {
         utils::is_esm_helper(expr)
     }
 
-    // require.d is a helper function defines getter functions for harmony exports, which convert esm exports to cjs
-    // example:
-    // require.d(exports, "a", function() {
-    //     return moduleContent;
-    // })
+    /// if a call expression is `require.d`, return true, and add exports to module_exports
+    /// ```js
+    /// require.d(exports, "a", function() {
+    ///     return moduleContent;
+    /// })
+    /// ```
     fn get_require_d<'b>(
         &self,
         expr: &'b Expression<'a>,
-        ctx: &TraverseCtx<'a>,
+        _ctx: &TraverseCtx<'a>,
     ) -> Option<(Atom<'a>, &'b Expression<'a>)> {
         let Expression::CallExpression(call_expr) = expr else {
             return None;
@@ -273,10 +253,6 @@ impl<'a> Webpack4Impl<'a, '_> {
 }
 
 impl<'a> Traverse<'a> for Webpack4Impl<'a, '_> {
-    fn enter_program(&mut self, program: &mut Program<'a>, ctx: &mut TraverseCtx<'a>) {
-        // println!("enter program");
-    }
-
     fn exit_program(&mut self, program: &mut Program<'a>, ctx: &mut TraverseCtx<'a>) {
         program
             .body
@@ -285,26 +261,9 @@ impl<'a> Traverse<'a> for Webpack4Impl<'a, '_> {
         if *self.ctx.is_esm.borrow() {
             let statements = self.ctx.module_exports.gen_esm_exports(&ctx.ast);
             program.body.extend(statements);
-        } else {
-            if let Some(statement) = self.ctx.module_exports.gen_cjs_exports(&ctx.ast) {
-                program.body.push(statement);
-            }
+        } else if let Some(statement) = self.ctx.module_exports.gen_cjs_exports(&ctx.ast) {
+            program.body.push(statement);
         }
-    }
-
-    fn enter_identifier_reference(
-        &mut self,
-        idf: &mut oxc_ast::ast::IdentifierReference<'a>,
-        ctx: &mut TraverseCtx<'a>,
-    ) {
-    }
-
-    fn enter_call_expression(
-        &mut self,
-        call_expr: &mut oxc_ast::ast::CallExpression<'a>,
-        ctx: &mut TraverseCtx<'a>,
-    ) {
-        // println!("call_expr: {:?}", call_expr);
     }
 
     fn enter_expression_statement(
@@ -319,15 +278,8 @@ impl<'a> Traverse<'a> for Webpack4Impl<'a, '_> {
             } else if p.is_sequence_expression() {
                 return;
             } else {
-                println!("Found unhandled require_d: {:?}: {:?}, {:?}", p, name, arg);
+                println!("Found unhandled require.d: {:?}: {:?}, {:?}", p, name, arg);
             }
-        }
-    }
-
-    fn enter_expression(&mut self, expr: &mut Expression<'a>, ctx: &mut TraverseCtx<'a>) {
-        if self.is_esm(expr, ctx) {
-            // ctx.ast.empty_statement(expr.span());
-            // *expr = ctx.ast.void_0(expr.span());
         }
     }
 
@@ -335,14 +287,13 @@ impl<'a> Traverse<'a> for Webpack4Impl<'a, '_> {
         let Statement::ExpressionStatement(es) = node else {
             return;
         };
-        let es_span = es.span;
+        let es_span: Span = es.span;
         let expr = &mut es.expression;
-        // if the expression is a esm helper function, set is_esm to true and replace the statement with empty statement
+
         if self.is_esm(expr, ctx) {
             self.ctx.is_esm.replace(true);
             *node = ctx.ast.statement_empty(es_span);
         } else if let Some((name, arg)) = self.get_require_d(expr, ctx) {
-            // println!("is require_d: {:?}", expr);
             self.ctx
                 .module_exports
                 .insert_export(name, arg.clone_in(ctx.ast.allocator));
