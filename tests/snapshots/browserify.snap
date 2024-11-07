@@ -1,0 +1,37 @@
+---
+source: tests/browserify.rs
+assertion_line: 39
+snapshot_kind: text
+---
+[
+    Module {id: 1, is_entry: false, code: `function add(a, b) {
+    	return a + b;
+    }
+    module.exports = add;
+    ` },
+    Module {id: 2, is_entry: true, code: `var sum = require("./sum");
+    var numbers = [
+    	1,
+    	2,
+    	3
+    ];
+    var result = sum(numbers);
+    var outputElement = document.getElementById("output");
+    outputElement.innerHTML = result;
+    ` },
+    Module {id: 3, is_entry: false, code: `function reduce(list, iteratee, memo) {
+    	list.forEach(function(item) {
+    		memo = iteratee(item, memo);
+    	});
+    	return memo;
+    }
+    module.exports = reduce;
+    ` },
+    Module {id: 4, is_entry: false, code: `var reduce = require("./reduce");
+    var add = require("./add");
+    function sum(list) {
+    	return reduce(list, add, 0);
+    }
+    module.exports = sum;
+    ` },
+]

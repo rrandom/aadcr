@@ -1,3 +1,4 @@
+use browserify::get_modules_form_browserify;
 use normpath::PathExt;
 
 use oxc_allocator::Allocator;
@@ -8,6 +9,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
+pub mod browserify;
 pub mod common;
 pub mod webpack;
 
@@ -53,8 +55,9 @@ pub struct UnpackerResult<'a> {
 }
 
 pub fn unpack<'a>(allocator: &'a Allocator, program: &Program<'a>) -> std::vec::Vec<Module<'a>> {
-    let modules = get_modules_form_webpack(allocator, program);
-    modules.unwrap_or_default()
+    get_modules_form_webpack(allocator, program)
+        .or(get_modules_form_browserify(allocator, program))
+        .unwrap_or_default()
 }
 
 pub fn unpacker<'a>(
