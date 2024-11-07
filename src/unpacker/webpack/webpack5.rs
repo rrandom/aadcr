@@ -46,7 +46,6 @@ pub fn get_modules_form_webpack5<'a>(
     };
 
     let mut module_map = IndexMap::new();
-    let mut modules = vec![];
 
     for node in nodes.iter() {
         match node.kind() {
@@ -117,6 +116,11 @@ pub fn get_modules_form_webpack5<'a>(
         }
     }
 
+    if module_map.is_empty() {
+        return None;
+    }
+
+    let mut modules = vec![];
     for (module_id, expr) in module_map {
         let fun_statement = ast.statement_expression(Span::default(), expr.clone_in(allocator));
 

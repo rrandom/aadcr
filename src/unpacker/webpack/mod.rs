@@ -2,9 +2,9 @@ use jsonp::get_modules_form_jsonp;
 use oxc_allocator::Allocator;
 use oxc_ast::ast::Program;
 
+pub mod jsonp;
 pub mod webpack4;
 pub mod webpack5;
-pub mod jsonp;
 
 use super::Module;
 use webpack4::get_modules_form_webpack4;

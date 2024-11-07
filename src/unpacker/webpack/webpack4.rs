@@ -26,9 +26,7 @@ pub fn get_modules_form_webpack4<'a>(
     let mut factory_id = None;
     let mut entry_ids = vec![];
     let mut factory_callee_span = Some(Span::default());
-
     let mut module_funs = vec![];
-    let mut modules = vec![];
 
     let nodes = semantic.nodes();
     let program_source_type = nodes
@@ -98,6 +96,11 @@ pub fn get_modules_form_webpack4<'a>(
         }
     }
 
+    if module_funs.is_empty() {
+        return None;
+    }
+
+    let mut modules = vec![];
     for (module_id, fun) in module_funs.iter().enumerate() {
         let new_fun = fun.clone_in(allocator);
 

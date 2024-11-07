@@ -70,7 +70,11 @@ pub fn unpacker<'a>(
         for module in modules.iter_mut() {
             module.write_code();
             // let file_name = format!("module_{}.js", module.id);
-            let file_name = &module.id;
+            let file_name = if module.id.ends_with(".js") {
+                &module.id
+            } else {
+                &format!("module_{}.js", module.id)
+            };
             let path = Path::new(output_dir)
                 .join(file_name)
                 .normalize_virtually()

@@ -1,0 +1,23 @@
+---
+source: tests/webpack_jsonp.rs
+assertion_line: 39
+snapshot_kind: text
+---
+[
+    Module {id: 1111, is_entry: false, code: `function utilityFunction() {
+    	console.log("Utility function from Module 1.");
+    }
+    module.exports = utilityFunction;
+    ` },
+    Module {id: 2222, is_entry: false, code: `var utilityFunction = require(1111);
+    function functionUsingUtility() {
+    	console.log("Function in Module 2 calling utility function:");
+    	utilityFunction();
+    }
+    function standaloneFunction() {
+    	console.log("Standalone function in Module 2.");
+    }
+    exports.functionUsingUtility = functionUsingUtility;
+    exports.standaloneFunction = standaloneFunction;
+    ` },
+]
