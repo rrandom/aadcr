@@ -21,6 +21,11 @@ pub fn get_fun_body<'a, 'b>(
     }
 }
 
+/// a iife is :
+/// !function() { ... }()
+/// !() => { ... }()
+/// (function() { ... })()
+/// (() => { ... })()
 pub fn get_iife_callee<'a, 'b>(expression: &'b Expression<'a>) -> Option<&'b Expression<'a>> {
     use oxc_ast::ast::UnaryOperator;
     let node = match expression.without_parentheses() {

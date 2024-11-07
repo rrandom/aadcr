@@ -15,7 +15,7 @@ fn main() {
     let args = Arguments::from_env();
     // let name = env::args().nth(1).unwrap_or_else(|| "test.js".to_string());
     // let name = "tests/fixtures/webpack5/dist/index.js";
-    let name = "test1.js";
+    let name = "tests/fixtures/jsonp.js";
     let path = Path::new(&name);
     let source_text = std::fs::read_to_string(path).expect("{name} not found");
     let allocator = Allocator::default();
