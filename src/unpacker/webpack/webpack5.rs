@@ -14,14 +14,13 @@ use oxc_span::Span;
 use oxc_traverse::{Traverse, TraverseCtx};
 
 use crate::unpacker::{
-    common::{fun_to_program::FunctionToProgram, utils, ModuleExportsStore},
-    Module,
+    common::{fun_to_program::FunctionToProgram, utils, ModuleExportsStore}, Module, UnpackResult, UnpackReturn
 };
 
 pub fn get_modules_form_webpack5<'a>(
     allocator: &'a Allocator,
     program: &Program<'a>,
-) -> Option<std::vec::Vec<Module<'a>>> {
+) -> UnpackResult<'a> {
     let ast = AstBuilder::new(allocator);
 
     let semantic = SemanticBuilder::new("").build(program).semantic;
@@ -148,7 +147,10 @@ pub fn get_modules_form_webpack5<'a>(
         ));
     }
 
-    Some(modules)
+    Some(UnpackReturn {
+        modules,
+        module_mapping: None,
+    })
 }
 
 struct Webpack5Ctx<'a> {

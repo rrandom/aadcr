@@ -1,4 +1,4 @@
-use indexmap::IndexMap;
+use indexmap::{map::Entry, IndexMap};
 
 use oxc_allocator::{Allocator, CloneIn};
 use oxc_ast::{
@@ -13,10 +13,12 @@ use oxc_span::Span;
 
 use crate::unpacker::{common::fun_to_program::FunctionToProgram, Module};
 
+use super::{UnpackResult, UnpackReturn};
+
 pub fn get_modules_form_browserify<'a>(
     allocator: &'a Allocator,
     program: &Program<'a>,
-) -> Option<std::vec::Vec<Module<'a>>> {
+) -> UnpackResult<'a> {
     let ast = AstBuilder::new(allocator);
 
     let semantic = SemanticBuilder::new("").build(program).semantic;
@@ -39,6 +41,8 @@ pub fn get_modules_form_browserify<'a>(
     let mut module_map = IndexMap::new();
 
     let mut entry_ids = vec![];
+
+    let mut module_mapping = IndexMap::new();
 
     for node in nodes.iter() {
         let AstKind::CallExpression(CallExpression {
@@ -99,6 +103,38 @@ pub fn get_modules_form_browserify<'a>(
                 break;
             }
 
+            for property in map.properties.iter() {
+                let ObjectPropertyKind::ObjectProperty(prop) = property else {
+                    unreachable!()
+                };
+
+                let PropertyKey::StringLiteral(short_name) = &prop.key else {
+                    unreachable!()
+                };
+
+                let Expression::NumericLiteral(module_id) = &prop.value else {
+                    unreachable!()
+                };
+                let short_name = short_name.value.as_str();
+
+                let entry = module_mapping.entry(module_id.raw);
+                match entry {
+                    Entry::Occupied(mut e) if *e.get() != short_name => {
+                        println!(
+                            "Module {} has multiple short names: {} and {}",
+                            module_id.raw,
+                            e.get(),
+                            short_name
+                        );
+                        e.insert(short_name);
+                    }
+                    Entry::Vacant(e) => {
+                        e.insert(short_name);
+                    }
+                    _ => {}
+                }
+            }
+
             let Some(module_factory) = module_factory.as_expression() else {
                 break;
             };
@@ -135,5 +171,8 @@ pub fn get_modules_form_browserify<'a>(
             program,
         ));
     }
-    Some(modules)
+    Some(UnpackReturn {
+        modules,
+        module_mapping: Some(module_mapping),
+    })
 }

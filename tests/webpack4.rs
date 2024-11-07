@@ -31,12 +31,13 @@ fn webpack4() {
 
     assert!(unpack_result.is_some());
 
-    let mut modules = unpack_result.unwrap();
+    let mut result = unpack_result.unwrap();
 
-    assert_eq!(modules.len(), 52);
+    assert_eq!(result.modules.len(), 52);
 
     insta::with_settings!({ prepend_module_to_snapshot => false, omit_expression => true }, {
-      insta::assert_debug_snapshot!("webpack4", modules
+      insta::assert_debug_snapshot!("webpack4", result
+        .modules
         .iter_mut()
         .map(|m| {
             m.write_code();

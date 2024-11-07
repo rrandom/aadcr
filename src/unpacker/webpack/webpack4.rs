@@ -12,13 +12,13 @@ use oxc_semantic::{ScopeTree, SemanticBuilder, SymbolTable};
 use oxc_span::{Atom, GetSpan, Span};
 use oxc_traverse::{Traverse, TraverseCtx};
 
-use crate::unpacker::common::{fun_to_program::FunctionToProgram, utils, ModuleExportsStore};
+use crate::unpacker::{common::{fun_to_program::FunctionToProgram, utils, ModuleExportsStore}, UnpackResult, UnpackReturn};
 use crate::unpacker::Module;
 
 pub fn get_modules_form_webpack4<'a>(
     allocator: &'a Allocator,
     program: &Program<'a>,
-) -> Option<std::vec::Vec<Module<'a>>> {
+) -> UnpackResult<'a> {
     let ast = AstBuilder::new(allocator);
 
     let semantic = SemanticBuilder::new("").build(program).semantic;
@@ -128,7 +128,10 @@ pub fn get_modules_form_webpack4<'a>(
         modules.push(Module::new(module_id.to_string(), is_entry, program));
     }
 
-    Some(modules)
+    Some(UnpackReturn {
+        modules,
+        module_mapping: None,
+    })
 }
 
 struct Webpack4Ctx<'a> {
