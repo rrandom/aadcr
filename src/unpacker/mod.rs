@@ -1,4 +1,7 @@
-use browserify::get_modules_form_browserify;
+pub mod browserify;
+pub mod common;
+pub mod webpack;
+
 use indexmap::IndexMap;
 use normpath::PathExt;
 
@@ -10,11 +13,8 @@ use std::{
     path::{Path, PathBuf},
 };
 
-pub mod browserify;
-pub mod common;
-pub mod webpack;
-
 use webpack::get_modules_form_webpack;
+use browserify::get_modules_form_browserify;
 
 pub struct Module<'a> {
     pub id: String,
@@ -58,63 +58,79 @@ pub struct UnpackReturn<'a> {
 
 pub type UnpackResult<'a> = Option<UnpackReturn<'a>>;
 
-pub fn unpack<'a>(allocator: &'a Allocator, program: &Program<'a>) -> UnpackReturn<'a> {
-    get_modules_form_webpack(allocator, program)
-        .or(get_modules_form_browserify(allocator, program))
-        .unwrap_or_default()
-}
-
 #[derive(Default)]
 pub struct UnpackerResult<'a> {
     pub files: std::vec::Vec<PathBuf>,
     pub modules: std::vec::Vec<Module<'a>>,
 }
 
-pub fn unpacker<'a>(
+pub struct Unpacker<'a> {
     allocator: &'a Allocator,
-    program: &Program<'a>,
-    output_dir: &str,
-) -> UnpackerResult<'a> {
-    let mut files = vec![];
+    program: &'a Program<'a>,
+    pub source_text: &'a str,
+}
 
-    let mut unpack_result = unpack(allocator, program);
-
-    if unpack_result.modules.is_empty() {
-        return UnpackerResult::default();
-    }
-    for module in unpack_result.modules.iter_mut() {
-        module.write_code();
-        let file_name = if let Some(mapping) = unpack_result.module_mapping.as_ref()
-            && let Some(name) = mapping.get(module.id.as_str())
-        {
-            let name = name.to_string();
-
-            if !name.ends_with(".js") {
-                format!("{}.js", name)
-            } else {
-                name
-            }
-        } else {
-            format!("module_{}.js", module.id)
-        };
-
-        let path = Path::new(output_dir)
-            .join(file_name)
-            .normalize_virtually()
-            .unwrap();
-
-        if let Ok(Some(parent)) = path.parent() {
-            fs::create_dir_all(parent).unwrap_or_else(|e| {
-                eprintln!("Failed to create directory {:?}: {}", parent, e);
-            });
+impl<'a> Unpacker<'a> {
+    pub fn new(allocator: &'a Allocator, program: &'a Program<'a>, source_text: &'a str) -> Self {
+        Self {
+            allocator,
+            program,
+            source_text,
         }
-
-        // println!("write to {:?}", path);
-        fs::write(&path, module.code.as_ref().unwrap()).unwrap();
-        files.push(path.into_path_buf());
     }
-    UnpackerResult {
-        files,
-        modules: unpack_result.modules,
+
+    pub fn unpack(&self) -> UnpackReturn<'a> {
+        get_modules_form_webpack(self.allocator, self.program)
+            .or(get_modules_form_browserify(self.allocator, self.program))
+            .unwrap_or_default()
+    }
+
+    pub fn build(&self, output_dir: &str) -> UnpackerResult<'a> {
+        let mut files = vec![];
+
+        let mut unpack_result = self.unpack();
+
+        if unpack_result.modules.is_empty() {
+            return UnpackerResult::default();
+        }
+        for module in unpack_result.modules.iter_mut() {
+            module.write_code();
+            let file_name = if let Some(mapping) = unpack_result.module_mapping.as_ref()
+                && let Some(name) = mapping.get(module.id.as_str())
+            {
+                let name = name.to_string();
+
+                if !name.ends_with(".js") {
+                    format!("{}.js", name)
+                } else {
+                    name
+                }
+            } else {
+                if !module.id.ends_with(".js") {
+                    format!("{}.js", module.id)
+                } else {
+                    module.id.to_string()
+                }
+            };
+
+            let path = Path::new(output_dir)
+                .join(file_name)
+                .normalize_virtually()
+                .unwrap();
+
+            if let Ok(Some(parent)) = path.parent() {
+                fs::create_dir_all(parent).unwrap_or_else(|e| {
+                    eprintln!("Failed to create directory {:?}: {}", parent, e);
+                });
+            }
+
+            // println!("write to {:?}", path);
+            fs::write(&path, module.code.as_ref().unwrap()).unwrap();
+            files.push(path.into_path_buf());
+        }
+        UnpackerResult {
+            files,
+            modules: unpack_result.modules,
+        }
     }
 }

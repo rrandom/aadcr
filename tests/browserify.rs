@@ -1,8 +1,6 @@
 use std::path::Path;
 
-use aadcr::unpacker::{
-    browserify::get_modules_form_browserify, webpack::jsonp::get_modules_form_jsonp,
-};
+use aadcr::unpacker::browserify::get_modules_form_browserify;
 use oxc_allocator::Allocator;
 use oxc_parser::Parser;
 use oxc_semantic::SemanticBuilder;
