@@ -1,10 +1,5 @@
-use oxc_allocator::Allocator;
 use oxc_ast::ast::{Expression, UnaryOperator};
-use oxc_codegen::CodeGenerator;
-use oxc_parser::Parser;
-use oxc_semantic::SemanticBuilder;
-use oxc_span::SourceType;
-use oxc_traverse::{traverse_mut, Traverse, TraverseCtx};
+use oxc_traverse::{Traverse, TraverseCtx};
 
 use crate::unminify::UnminifyCtx;
 
@@ -34,11 +29,8 @@ impl<'a> Traverse<'a> for UnBoolean<'a, '_> {
 
 #[cfg(test)]
 mod tests {
-    use oxc_span::SourceType;
 
-    use crate::unminify::{passes::tests::run_test, UnminifyCtx};
-
-    use super::UnBoolean;
+    use crate::unminify::passes::tests::run_test;
 
     #[test]
     fn test_un_boolean() {
