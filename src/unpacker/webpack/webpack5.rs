@@ -1,5 +1,4 @@
 use indexmap::IndexMap;
-use std::cell::RefCell;
 
 use oxc_allocator::{Allocator, CloneIn};
 use oxc_ast::{
@@ -14,7 +13,7 @@ use oxc_span::Span;
 use oxc_traverse::{Traverse, TraverseCtx};
 
 use crate::unpacker::{
-    common::{fun_to_program::FunctionToProgram, utils, ModuleExportsStore}, Module, UnpackResult, UnpackReturn
+    common::{fun_to_program::FunctionToProgram, utils, ModuleCtx}, Module, UnpackResult, UnpackReturn
 };
 
 pub fn get_modules_form_webpack5<'a>(
@@ -153,26 +152,8 @@ pub fn get_modules_form_webpack5<'a>(
     })
 }
 
-struct Webpack5Ctx<'a> {
-    // errors: RefCell<Vec<OxcDiagnostic>>,
-
-    pub source_text: &'a str,
-    pub is_esm: RefCell<bool>,
-    pub module_exports: ModuleExportsStore<'a>,
-}
-
-impl<'a> Webpack5Ctx<'a> {
-    pub fn new(source_text: &'a str) -> Self {
-        Self {
-            source_text,
-            is_esm: RefCell::new(false),
-            module_exports: ModuleExportsStore::new(),
-        }
-    }
-}
-
 struct WebPack5<'a> {
-    ctx: Webpack5Ctx<'a>,
+    ctx: ModuleCtx<'a>,
     allocator: &'a Allocator,
 }
 
@@ -183,7 +164,7 @@ struct Webpack5Return {
 
 impl<'a> WebPack5<'a> {
     pub fn new(allocator: &'a Allocator, source_text: &'a str) -> Self {
-        let ctx = Webpack5Ctx::new(source_text);
+        let ctx = ModuleCtx::new(source_text);
 
         Self { allocator, ctx }
     }
@@ -213,11 +194,11 @@ impl<'a> WebPack5<'a> {
 }
 
 struct Webpack5Impl<'a, 'ctx> {
-    ctx: &'ctx Webpack5Ctx<'a>,
+    ctx: &'ctx ModuleCtx<'a>,
 }
 
 impl<'a, 'ctx> Webpack5Impl<'a, 'ctx> {
-    pub fn new(ctx: &'ctx Webpack5Ctx<'a>) -> Self {
+    pub fn new(ctx: &'ctx ModuleCtx<'a>) -> Self {
         Self { ctx }
     }
 

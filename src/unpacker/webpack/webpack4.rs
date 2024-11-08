@@ -1,4 +1,3 @@
-use std::cell::RefCell;
 
 use oxc_allocator::{Allocator, CloneIn};
 use oxc_ast::{
@@ -12,7 +11,7 @@ use oxc_semantic::{ScopeTree, SemanticBuilder, SymbolTable};
 use oxc_span::{Atom, GetSpan, Span};
 use oxc_traverse::{Traverse, TraverseCtx};
 
-use crate::unpacker::{common::{fun_to_program::FunctionToProgram, utils, ModuleExportsStore}, UnpackResult, UnpackReturn};
+use crate::unpacker::{common::{fun_to_program::FunctionToProgram, utils, ModuleCtx}, UnpackResult, UnpackReturn};
 use crate::unpacker::Module;
 
 pub fn get_modules_form_webpack4<'a>(
@@ -134,23 +133,8 @@ pub fn get_modules_form_webpack4<'a>(
     })
 }
 
-struct Webpack4Ctx<'a> {
-    pub source_text: &'a str,
-    pub is_esm: RefCell<bool>,
-    pub module_exports: ModuleExportsStore<'a>,
-}
-
-impl<'a> Webpack4Ctx<'a> {
-    pub fn new(source_text: &'a str) -> Self {
-        Self {
-            source_text,
-            is_esm: RefCell::new(false),
-            module_exports: ModuleExportsStore::new(),
-        }
-    }
-}
 struct WebPack4<'a> {
-    ctx: Webpack4Ctx<'a>,
+    ctx: ModuleCtx<'a>,
     allocator: &'a Allocator,
 }
 
@@ -161,7 +145,7 @@ struct Webpack4Return {
 
 impl<'a> WebPack4<'a> {
     pub fn new(allocator: &'a Allocator, source_text: &'a str) -> Self {
-        let ctx = Webpack4Ctx::new(source_text);
+        let ctx = ModuleCtx::new(source_text);
 
         Self { allocator, ctx }
     }
@@ -191,11 +175,11 @@ impl<'a> WebPack4<'a> {
 }
 
 struct Webpack4Impl<'a, 'ctx> {
-    ctx: &'ctx Webpack4Ctx<'a>,
+    ctx: &'ctx ModuleCtx<'a>,
 }
 
 impl<'a, 'ctx> Webpack4Impl<'a, 'ctx> {
-    pub fn new(ctx: &'ctx Webpack4Ctx<'a>) -> Self {
+    pub fn new(ctx: &'ctx ModuleCtx<'a>) -> Self {
         Self { ctx }
     }
 

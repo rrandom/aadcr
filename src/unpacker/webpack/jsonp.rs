@@ -1,5 +1,4 @@
 use indexmap::IndexMap;
-use std::cell::RefCell;
 
 use oxc_allocator::{Allocator, CloneIn};
 use oxc_ast::{
@@ -14,7 +13,7 @@ use oxc_span::{Atom, Span};
 use oxc_traverse::{Traverse, TraverseCtx};
 
 use crate::unpacker::{
-    common::{fun_to_program::FunctionToProgram, utils, ModuleExportsStore}, Module, UnpackResult, UnpackReturn
+    common::{fun_to_program::FunctionToProgram, utils, ModuleCtx}, Module, UnpackResult, UnpackReturn
 };
 
 pub fn get_modules_form_jsonp<'a>(
@@ -143,24 +142,8 @@ pub fn get_modules_form_jsonp<'a>(
     })
 }
 
-struct WebpackJsonpCtx<'a> {
-    pub source_text: &'a str,
-    pub is_esm: RefCell<bool>,
-    pub module_exports: ModuleExportsStore<'a>,
-}
-
-impl<'a> WebpackJsonpCtx<'a> {
-    pub fn new(source_text: &'a str) -> Self {
-        Self {
-            source_text,
-            is_esm: RefCell::new(false),
-            module_exports: ModuleExportsStore::new(),
-        }
-    }
-}
-
 struct WebPackJsonp<'a> {
-    ctx: WebpackJsonpCtx<'a>,
+    ctx: ModuleCtx<'a>,
     allocator: &'a Allocator,
 }
 
@@ -171,7 +154,7 @@ struct WebpackJsonpReturn {
 
 impl<'a> WebPackJsonp<'a> {
     pub fn new(allocator: &'a Allocator, source_text: &'a str) -> Self {
-        let ctx = WebpackJsonpCtx::new(source_text);
+        let ctx = ModuleCtx::new(source_text);
 
         Self { allocator, ctx }
     }
@@ -201,11 +184,11 @@ impl<'a> WebPackJsonp<'a> {
 }
 
 struct WebpackJsonpImpl<'a, 'ctx> {
-    ctx: &'ctx WebpackJsonpCtx<'a>,
+    ctx: &'ctx ModuleCtx<'a>,
 }
 
 impl<'a, 'ctx> WebpackJsonpImpl<'a, 'ctx> {
-    pub fn new(ctx: &'ctx WebpackJsonpCtx<'a>) -> Self {
+    pub fn new(ctx: &'ctx ModuleCtx<'a>) -> Self {
         Self { ctx }
     }
 

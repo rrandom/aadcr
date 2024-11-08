@@ -154,3 +154,19 @@ impl<'a> ModuleExportsStore<'a> {
         Some(ast.statement_expression(Span::default(), exp))
     }
 }
+
+pub struct ModuleCtx<'a> {
+    pub source_text: &'a str,
+    pub is_esm: RefCell<bool>,
+    pub module_exports: ModuleExportsStore<'a>,
+}
+
+impl<'a> ModuleCtx<'a> {
+    pub fn new(source_text: &'a str) -> Self {
+        Self {
+            source_text,
+            is_esm: RefCell::new(false),
+            module_exports: ModuleExportsStore::new(),
+        }
+    }
+}

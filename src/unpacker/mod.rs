@@ -107,12 +107,10 @@ impl<'a> Unpacker<'a> {
                 } else {
                     name
                 }
+            } else if !module.id.ends_with(".js") {
+                format!("{}.js", module.id)
             } else {
-                if !module.id.ends_with(".js") {
-                    format!("{}.js", module.id)
-                } else {
-                    module.id.to_string()
-                }
+                module.id.to_string()
             };
 
             let path = Path::new(output_dir)
@@ -133,6 +131,7 @@ impl<'a> Unpacker<'a> {
         UnpackerReturn {
             files,
             modules: unpack_result.modules,
+            // TO-DO: add errors
             errors: vec![],
         }
     }
