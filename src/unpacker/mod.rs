@@ -55,6 +55,7 @@ impl std::fmt::Debug for Module<'_> {
 pub struct UnpackReturn<'a> {
     pub modules: std::vec::Vec<Module<'a>>,
     pub module_mapping: Option<IndexMap<&'a str, &'a str>>,
+    pub errors: std::vec::Vec<OxcDiagnostic>,
 }
 
 pub type UnpackResult<'a> = Option<UnpackReturn<'a>>;
@@ -82,7 +83,7 @@ impl<'a> Unpacker<'a> {
     }
 
     pub fn unpack(&self) -> UnpackReturn<'a> {
-        get_modules_form_webpack(self.allocator, self.program)
+        get_modules_form_webpack(self.allocator, self.program, self.source_text)
             .or(get_modules_form_browserify(self.allocator, self.program))
             .unwrap_or_default()
     }
@@ -131,8 +132,7 @@ impl<'a> Unpacker<'a> {
         UnpackerReturn {
             files,
             modules: unpack_result.modules,
-            // TO-DO: add errors
-            errors: vec![],
+            errors: unpack_result.errors,
         }
     }
 }

@@ -5,6 +5,7 @@ use oxc_ast::{
     ast::{Expression, ExpressionStatement, ObjectPropertyKind, Program, Statement},
     AstBuilder, AstKind,
 };
+use oxc_diagnostics::OxcDiagnostic;
 use oxc_semantic::{ScopeTree, SemanticBuilder, SymbolTable};
 use oxc_span::{Atom, Span};
 use oxc_traverse::{Traverse, TraverseCtx};
@@ -19,6 +20,7 @@ use super::{RequireD5, RequireR};
 pub fn get_modules_form_webpack5<'a>(
     allocator: &'a Allocator,
     program: &Program<'a>,
+    source_text: &'a str,
 ) -> UnpackResult<'a> {
     let ast = AstBuilder::new(allocator);
 
@@ -44,6 +46,8 @@ pub fn get_modules_form_webpack5<'a>(
     };
 
     let mut module_map = IndexMap::new();
+
+    let mut errors = vec![];
 
     for node in nodes.iter() {
         match node.kind() {
@@ -94,11 +98,9 @@ pub fn get_modules_form_webpack5<'a>(
 
                 let last_st = fun_body.statements.last();
 
-                if let Some(Statement::ExpressionStatement(expr)) = last_st {
-                    let Some(fun_expr) = utils::get_iife_callee(&expr.expression) else {
-                        continue;
-                    };
-
+                if let Some(Statement::ExpressionStatement(expr)) = last_st
+                    && let Some(fun_expr) = utils::get_iife_callee(&expr.expression)
+                {
                     match fun_expr {
                         Expression::ArrowFunctionExpression(_)
                         | Expression::FunctionExpression(_) => {
@@ -108,6 +110,10 @@ pub fn get_modules_form_webpack5<'a>(
                             continue;
                         }
                     }
+                } else {
+                    errors.push(OxcDiagnostic::error(
+                        "The last statement in the IIFE must be an expression",
+                    ));
                 }
             }
             _ => {}
@@ -137,18 +143,20 @@ pub fn get_modules_form_webpack5<'a>(
         let mut fun_renamer = FunctionToProgram::new(allocator, ["module", "exports", "require"]);
         fun_renamer.build(&mut program);
 
-        let _ret = WebPack5::new(allocator, "").build(&mut program);
+        let ret = WebPack5::new(allocator, source_text).build(&mut program);
 
         modules.push(Module::new(
             module_id.to_string(),
             module_id == "entry.js",
             program,
         ));
+        errors.extend(ret.errors);
     }
 
     Some(UnpackReturn {
         modules,
         module_mapping: None,
+        errors,
     })
 }
 
@@ -159,7 +167,7 @@ struct WebPack5<'a> {
 
 #[derive(Debug)]
 struct Webpack5Return {
-    pub is_esm: bool,
+    pub errors: std::vec::Vec<OxcDiagnostic>,
 }
 
 impl<'a> WebPack5<'a> {
@@ -188,7 +196,7 @@ impl<'a> WebPack5<'a> {
         let mut webpack5 = Webpack5Impl::new(&self.ctx);
         webpack5.build(program, &mut ctx);
         Webpack5Return {
-            is_esm: self.ctx.is_esm.take(),
+            errors: self.ctx.take_errors(),
         }
     }
 }
@@ -214,6 +222,10 @@ impl<'a> RequireD5<'a> for Webpack5Impl<'a, '_> {
         self.ctx
             .module_exports
             .insert_export(export_name, export_value);
+    }
+
+    fn error(&self, error: OxcDiagnostic) {
+        self.ctx.error(error);
     }
 }
 

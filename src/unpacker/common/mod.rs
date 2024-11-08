@@ -1,4 +1,5 @@
 use indexmap::IndexMap;
+use oxc_diagnostics::OxcDiagnostic;
 use std::cell::RefCell;
 
 use oxc_allocator::CloneIn;
@@ -159,6 +160,7 @@ pub struct ModuleCtx<'a> {
     pub source_text: &'a str,
     pub is_esm: RefCell<bool>,
     pub module_exports: ModuleExportsStore<'a>,
+    pub errors: RefCell<Vec<OxcDiagnostic>>,
 }
 
 impl<'a> ModuleCtx<'a> {
@@ -167,6 +169,15 @@ impl<'a> ModuleCtx<'a> {
             source_text,
             is_esm: RefCell::new(false),
             module_exports: ModuleExportsStore::new(),
+            errors: RefCell::new(vec![]),
         }
+    }
+
+    pub fn take_errors(&self) -> Vec<OxcDiagnostic> {
+        std::mem::take(&mut self.errors.borrow_mut())
+    }
+
+    pub fn error(&self, error: OxcDiagnostic) {
+        self.errors.borrow_mut().push(error);
     }
 }

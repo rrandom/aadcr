@@ -6,6 +6,7 @@ use oxc_ast::{
     },
     AstBuilder, AstKind,
 };
+use oxc_diagnostics::OxcDiagnostic;
 use oxc_semantic::{ScopeTree, SemanticBuilder, SymbolTable};
 use oxc_span::{GetSpan, Span};
 use oxc_traverse::{Traverse, TraverseCtx};
@@ -104,6 +105,8 @@ pub fn get_modules_form_webpack4<'a>(
     }
 
     let mut modules = vec![];
+    let mut errors = vec![];
+
     for (module_id, fun) in module_funs.iter().enumerate() {
         let new_fun = fun.clone_in(allocator);
 
@@ -124,16 +127,18 @@ pub fn get_modules_form_webpack4<'a>(
         let mut fun_renamer = FunctionToProgram::new(allocator, ["module", "exports", "require"]);
         fun_renamer.build(&mut program);
 
-        let _ret = WebPack4::new(allocator, "").build(&mut program);
+        let ret = WebPack4::new(allocator, "").build(&mut program);
 
         let is_entry = entry_ids.contains(&(module_id as f64));
 
         modules.push(Module::new(module_id.to_string(), is_entry, program));
+        errors.extend(ret.errors);
     }
 
     Some(UnpackReturn {
         modules,
         module_mapping: None,
+        errors,
     })
 }
 
@@ -144,7 +149,7 @@ struct WebPack4<'a> {
 
 #[derive(Debug)]
 struct Webpack4Return {
-    pub is_esm: bool,
+    pub errors: std::vec::Vec<OxcDiagnostic>,
 }
 
 impl<'a> WebPack4<'a> {
@@ -173,7 +178,7 @@ impl<'a> WebPack4<'a> {
         let mut webpack4 = Webpack4Impl::new(&self.ctx);
         webpack4.build(program, &mut ctx);
         Webpack4Return {
-            is_esm: self.ctx.is_esm.take(),
+            errors: self.ctx.take_errors(),
         }
     }
 }
@@ -193,7 +198,11 @@ impl<'a, 'ctx> Webpack4Impl<'a, 'ctx> {
 }
 
 impl<'a> RequireR<'a> for Webpack4Impl<'a, '_> {}
-impl<'a> RequireD4<'a> for Webpack4Impl<'a, '_> {}
+impl<'a> RequireD4<'a> for Webpack4Impl<'a, '_> {
+    fn error(&self, error: OxcDiagnostic) {
+        self.ctx.error(error);
+    }
+}
 
 impl<'a> Traverse<'a> for Webpack4Impl<'a, '_> {
     fn exit_program(&mut self, program: &mut Program<'a>, ctx: &mut TraverseCtx<'a>) {
@@ -215,13 +224,15 @@ impl<'a> Traverse<'a> for Webpack4Impl<'a, '_> {
         ctx: &mut TraverseCtx<'a>,
     ) {
         let expr = &node.expression;
-        let p = ctx.parent();
+        let parent = ctx.parent();
         if let Some((name, arg)) = self.get_require_d(expr, ctx) {
-            if p.is_expression_statement() {
-            } else if p.is_sequence_expression() {
+            if parent.is_expression_statement() || parent.is_sequence_expression() {
                 return;
             } else {
-                println!("Found unhandled require.d: {:?}: {:?}, {:?}", p, name, arg);
+                panic!(
+                    "Found unhandled require.d: {:?}: {:?}, {:?}",
+                    parent, name, arg
+                );
             }
         }
     }

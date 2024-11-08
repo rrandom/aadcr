@@ -1,6 +1,8 @@
 use jsonp::get_modules_form_jsonp;
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{ObjectPropertyKind, Program, PropertyKey};
+use oxc_diagnostics::OxcDiagnostic;
+use oxc_span::GetSpan;
 
 pub mod jsonp;
 pub mod webpack4;
@@ -13,8 +15,9 @@ use webpack5::get_modules_form_webpack5;
 pub fn get_modules_form_webpack<'a>(
     allocator: &'a Allocator,
     program: &Program<'a>,
+    source_text: &'a str,
 ) -> UnpackResult<'a> {
-    get_modules_form_webpack5(allocator, program)
+    get_modules_form_webpack5(allocator, program, source_text)
         .or(get_modules_form_webpack4(allocator, program))
         .or(get_modules_form_jsonp(allocator, program))
 }
@@ -33,6 +36,8 @@ pub trait RequireR<'a> {
 
 /// webpack4 version of `require.d`
 pub trait RequireD4<'a> {
+    fn error(&self, error: OxcDiagnostic);
+
     /// if a call expression is `require.d`, return true, and add exports to module_exports
     /// ```js
     /// require.d(exports, "a", function() {
@@ -61,29 +66,50 @@ pub trait RequireD4<'a> {
         if call_expr.arguments.len() != 3 {
             return None;
         };
-        let [Argument::Identifier(_), Argument::StringLiteral(name), Argument::FunctionExpression(f)] =
+        let [Argument::Identifier(_), Argument::StringLiteral(name), Argument::FunctionExpression(fun)] =
             call_expr.arguments.as_slice()
         else {
             return None;
         };
-        let Some(body) = &f.body else { return None };
+        let Some(body) = &fun.body else { return None };
         if body.statements.len() != 1 {
-            return None;
-        };
-        let Statement::ReturnStatement(ret) = &body.statements[0] else {
-            return None;
-        };
-        let Some(arg) = &ret.argument else {
+            self.error(OxcDiagnostic::error("Unexpected module content").with_label(fun.span()));
             return None;
         };
 
-        Some((name.value.clone(), arg))
+        let Some(export_value) = (match &body.statements[0] {
+            Statement::ReturnStatement(ret) => {
+                if let Some(arg) = &ret.argument {
+                    Some(arg.without_parentheses())
+                } else {
+                    None
+                }
+            }
+            Statement::ExpressionStatement(expr) => {
+                if matches!(
+                    expr.expression,
+                    Expression::Identifier(_) | Expression::StaticMemberExpression(_)
+                ) {
+                    Some(expr.expression.without_parentheses())
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }) else {
+            self.error(OxcDiagnostic::error("Unexpected module content").with_label(fun.span()));
+            return None;
+        };
+
+        Some((name.value.clone(), export_value))
     }
 }
 
 /// webpack5 version of `require.d`
 pub trait RequireD5<'a> {
     fn handle_export(&self, export_name: Atom<'a>, export_value: Expression<'a>);
+
+    fn error(&self, error: OxcDiagnostic);
 
     /// if a call expression is `require.d`, return true, and add exports to module_exports
     /// ```js
@@ -129,20 +155,17 @@ pub trait RequireD5<'a> {
             };
 
             let Some(fun_body) = utils::get_fun_body(obj_prop.value.without_parentheses()) else {
-                // TO-DO
-                // add a warning
+                self.error(OxcDiagnostic::error("Invalid require.d").with_label(obj_prop.span()));
                 return false;
             };
 
             if fun_body.statements.len() == 1 {
-                match &fun_body.statements[0] {
+                let Some(export_value) = (match &fun_body.statements[0] {
                     Statement::ReturnStatement(ret) => {
                         if let Some(arg) = &ret.argument {
-                            self.handle_export(
-                                export_name.clone(),
-                                arg.without_parentheses().clone_in(ctx.ast.allocator),
-                            );
-                            found = true;
+                            Some(arg.without_parentheses())
+                        } else {
+                            None
                         }
                     }
                     Statement::ExpressionStatement(expr) => {
@@ -151,18 +174,30 @@ pub trait RequireD5<'a> {
                             export_value,
                             Expression::Identifier(_) | Expression::StaticMemberExpression(_)
                         ) {
-                            self.handle_export(
-                                export_name.clone(),
-                                export_value.clone_in(ctx.ast.allocator),
-                            );
-                            found = true;
+                            Some(export_value)
+                        } else {
+                            None
                         }
                     }
-                    _ => {}
-                }
+                    _ => None,
+                }) else {
+                    self.error(
+                        OxcDiagnostic::error("Unexpected missing module content")
+                            .with_label(fun_body.span()),
+                    );
+                    return false;
+                };
+
+                self.handle_export(
+                    export_name.clone(),
+                    export_value.clone_in(ctx.ast.allocator),
+                );
+
+                found = true;
             } else {
-                // TO-DO
-                // add a warning
+                self.error(
+                    OxcDiagnostic::error("Unexpected module content").with_label(fun_body.span()),
+                );
             }
         }
         found

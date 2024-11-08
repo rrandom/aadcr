@@ -8,6 +8,7 @@ use oxc_ast::{
     },
     AstBuilder, AstKind,
 };
+use oxc_diagnostics::OxcDiagnostic;
 use oxc_semantic::{ScopeTree, SemanticBuilder, SymbolTable};
 use oxc_span::{Atom, Span};
 use oxc_traverse::{Traverse, TraverseCtx};
@@ -115,6 +116,8 @@ pub fn get_modules_form_jsonp<'a>(
         return None;
     }
 
+    let mut errors = vec![];
+
     let mut modules = vec![];
     for (module_id, expr) in module_map {
         let fun_statement = ast.statement_expression(Span::default(), expr.clone_in(allocator));
@@ -134,14 +137,17 @@ pub fn get_modules_form_jsonp<'a>(
         let mut fun_renamer = FunctionToProgram::new(allocator, ["module", "exports", "require"]);
         fun_renamer.build(&mut program);
 
-        let _ret = WebPackJsonp::new(allocator, "").build(&mut program);
+        let ret = WebPackJsonp::new(allocator, "").build(&mut program);
 
         modules.push(Module::new(module_id.to_string(), false, program));
+
+        errors.extend(ret.errors);
     }
 
     Some(UnpackReturn {
         modules,
         module_mapping: None,
+        errors,
     })
 }
 
@@ -151,7 +157,7 @@ struct WebPackJsonp<'a> {
 }
 
 struct WebpackJsonpReturn {
-    pub is_esm: bool,
+    pub errors: std::vec::Vec<OxcDiagnostic>,
 }
 
 impl<'a> WebPackJsonp<'a> {
@@ -180,7 +186,7 @@ impl<'a> WebPackJsonp<'a> {
         let mut webpack_jsonp = WebpackJsonpImpl::new(&self.ctx);
         webpack_jsonp.build(program, &mut ctx);
         WebpackJsonpReturn {
-            is_esm: self.ctx.is_esm.take(),
+            errors: self.ctx.take_errors(),
         }
     }
 }
@@ -200,12 +206,20 @@ impl<'a, 'ctx> WebpackJsonpImpl<'a, 'ctx> {
 }
 
 impl<'a> RequireR<'a> for WebpackJsonpImpl<'a, '_> {}
-impl<'a> RequireD4<'a> for WebpackJsonpImpl<'a, '_> {}
+impl<'a> RequireD4<'a> for WebpackJsonpImpl<'a, '_> {
+    fn error(&self, error: OxcDiagnostic) {
+        self.ctx.error(error);
+    }
+}
 impl<'a> RequireD5<'a> for WebpackJsonpImpl<'a, '_> {
     fn handle_export(&self, export_name: Atom<'a>, export_value: Expression<'a>) {
         self.ctx
             .module_exports
             .insert_export(export_name, export_value);
+    }
+
+    fn error(&self, error: OxcDiagnostic) {
+        self.ctx.error(error);
     }
 }
 

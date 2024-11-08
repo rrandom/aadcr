@@ -8,6 +8,7 @@ use oxc_ast::{
     },
     AstBuilder, AstKind,
 };
+use oxc_diagnostics::OxcDiagnostic;
 use oxc_semantic::SemanticBuilder;
 use oxc_span::Span;
 
@@ -43,6 +44,8 @@ pub fn get_modules_form_browserify<'a>(
     let mut entry_ids = vec![];
 
     let mut module_mapping = IndexMap::new();
+
+    let mut errors = vec![];
 
     for node in nodes.iter() {
         let AstKind::CallExpression(CallExpression {
@@ -120,12 +123,12 @@ pub fn get_modules_form_browserify<'a>(
                 let entry = module_mapping.entry(module_id.raw);
                 match entry {
                     Entry::Occupied(mut e) if *e.get() != short_name => {
-                        println!(
+                        errors.push(OxcDiagnostic::warn(format!(
                             "Module {} has multiple short names: {} and {}",
                             module_id.raw,
                             e.get(),
                             short_name
-                        );
+                        )));
                         e.insert(short_name);
                     }
                     Entry::Vacant(e) => {
@@ -174,5 +177,6 @@ pub fn get_modules_form_browserify<'a>(
     Some(UnpackReturn {
         modules,
         module_mapping: Some(module_mapping),
+        errors,
     })
 }

@@ -27,7 +27,7 @@ fn webpack5() {
 
     assert!(ret.errors.is_empty());
 
-    let unpack_result = get_modules_form_webpack5(&allocator, &mut program);
+    let unpack_result = get_modules_form_webpack5(&allocator, &mut program, &source_text);
 
     assert!(unpack_result.is_some());
 
