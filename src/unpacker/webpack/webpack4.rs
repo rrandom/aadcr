@@ -1,18 +1,22 @@
-
 use oxc_allocator::{Allocator, CloneIn};
 use oxc_ast::{
     ast::{
-        Argument, ArrayExpressionElement, AssignmentExpression, Expression, IdentifierName,
-        MemberExpression, Program, Statement,
+        ArrayExpressionElement, AssignmentExpression, Expression, MemberExpression, Program,
+        Statement,
     },
     AstBuilder, AstKind,
 };
 use oxc_semantic::{ScopeTree, SemanticBuilder, SymbolTable};
-use oxc_span::{Atom, GetSpan, Span};
+use oxc_span::{GetSpan, Span};
 use oxc_traverse::{Traverse, TraverseCtx};
 
-use crate::unpacker::{common::{fun_to_program::FunctionToProgram, utils, ModuleCtx}, UnpackResult, UnpackReturn};
 use crate::unpacker::Module;
+use crate::unpacker::{
+    common::{fun_to_program::FunctionToProgram, ModuleCtx},
+    UnpackResult, UnpackReturn,
+};
+
+use super::{RequireD4, RequireR};
 
 pub fn get_modules_form_webpack4<'a>(
     allocator: &'a Allocator,
@@ -188,59 +192,8 @@ impl<'a, 'ctx> Webpack4Impl<'a, 'ctx> {
     }
 }
 
-impl<'a> Webpack4Impl<'a, '_> {
-    #[inline]
-    fn is_esm(&self, expr: &Expression<'a>, _ctx: &TraverseCtx<'a>) -> bool {
-        utils::is_esm_helper(expr)
-    }
-
-    /// if a call expression is `require.d`, return true, and add exports to module_exports
-    /// ```js
-    /// require.d(exports, "a", function() {
-    ///     return moduleContent;
-    /// })
-    /// ```
-    fn get_require_d<'b>(
-        &self,
-        expr: &'b Expression<'a>,
-        _ctx: &TraverseCtx<'a>,
-    ) -> Option<(Atom<'a>, &'b Expression<'a>)> {
-        let Expression::CallExpression(call_expr) = expr else {
-            return None;
-        };
-        let Expression::StaticMemberExpression(mem) = &call_expr.callee else {
-            return None;
-        };
-        let (Expression::Identifier(idf), IdentifierName { name, .. }) =
-            (&mem.object, &mem.property)
-        else {
-            return None;
-        };
-        if name.as_str() != "d" || idf.name != "require" {
-            return None;
-        };
-        if call_expr.arguments.len() != 3 {
-            return None;
-        };
-        let [Argument::Identifier(_), Argument::StringLiteral(name), Argument::FunctionExpression(f)] =
-            call_expr.arguments.as_slice()
-        else {
-            return None;
-        };
-        let Some(body) = &f.body else { return None };
-        if body.statements.len() != 1 {
-            return None;
-        };
-        let Statement::ReturnStatement(ret) = &body.statements[0] else {
-            return None;
-        };
-        let Some(arg) = &ret.argument else {
-            return None;
-        };
-
-        Some((name.value.clone(), arg))
-    }
-}
+impl<'a> RequireR<'a> for Webpack4Impl<'a, '_> {}
+impl<'a> RequireD4<'a> for Webpack4Impl<'a, '_> {}
 
 impl<'a> Traverse<'a> for Webpack4Impl<'a, '_> {
     fn exit_program(&mut self, program: &mut Program<'a>, ctx: &mut TraverseCtx<'a>) {

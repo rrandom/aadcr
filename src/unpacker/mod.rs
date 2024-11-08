@@ -14,8 +14,8 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use webpack::get_modules_form_webpack;
 use browserify::get_modules_form_browserify;
+use webpack::get_modules_form_webpack;
 
 pub struct Module<'a> {
     pub id: String,

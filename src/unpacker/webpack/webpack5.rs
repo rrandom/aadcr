@@ -2,19 +2,19 @@ use indexmap::IndexMap;
 
 use oxc_allocator::{Allocator, CloneIn};
 use oxc_ast::{
-    ast::{
-        Argument, Expression, ExpressionStatement, IdentifierName, ObjectPropertyKind, Program,
-        PropertyKey, Statement,
-    },
+    ast::{Expression, ExpressionStatement, ObjectPropertyKind, Program, Statement},
     AstBuilder, AstKind,
 };
 use oxc_semantic::{ScopeTree, SemanticBuilder, SymbolTable};
-use oxc_span::Span;
+use oxc_span::{Atom, Span};
 use oxc_traverse::{Traverse, TraverseCtx};
 
 use crate::unpacker::{
-    common::{fun_to_program::FunctionToProgram, utils, ModuleCtx}, Module, UnpackResult, UnpackReturn
+    common::{fun_to_program::FunctionToProgram, utils, ModuleCtx},
+    Module, UnpackResult, UnpackReturn,
 };
+
+use super::{RequireD5, RequireR};
 
 pub fn get_modules_form_webpack5<'a>(
     allocator: &'a Allocator,
@@ -207,93 +207,13 @@ impl<'a, 'ctx> Webpack5Impl<'a, 'ctx> {
     }
 }
 
-impl<'a> Webpack5Impl<'a, '_> {
-    #[inline]
-    fn is_esm(&self, expr: &Expression<'a>, _ctx: &TraverseCtx<'a>) -> bool {
-        utils::is_esm_helper(expr)
-    }
+impl<'a> RequireR<'a> for Webpack5Impl<'a, '_> {}
 
-    /// if a call expression is `require.d`, return true, and add exports to module_exports
-    /// ```js
-    /// require.d(exports, {
-    ///   "default": getter,
-    ///   [key]: getter
-    /// })
-    /// ```
-    fn get_require_d<'b>(&self, expr: &'b Expression<'a>, ctx: &TraverseCtx<'a>) -> bool {
-        let mut found = false;
-        let Expression::CallExpression(call_expr) = expr else {
-            return false;
-        };
-        let Expression::StaticMemberExpression(mem_expr) = &call_expr.callee else {
-            return false;
-        };
-        let (Expression::Identifier(idr), IdentifierName { name, .. }) =
-            (&mem_expr.object, &mem_expr.property)
-        else {
-            return false;
-        };
-        if name.as_str() != "d" || idr.name != "require" {
-            return false;
-        };
-        let [Argument::Identifier(_), Argument::ObjectExpression(obj)] =
-            call_expr.arguments.as_slice()
-        else {
-            return false;
-        };
-        if obj.properties.len() == 0 {
-            return false;
-        }
-        for prop in obj.properties.iter() {
-            let ObjectPropertyKind::ObjectProperty(obj_prop) = prop else {
-                return false;
-            };
-            let export_name = match &obj_prop.key {
-                PropertyKey::StringLiteral(s) => &s.value,
-                PropertyKey::StaticIdentifier(s) => &s.name,
-                _ => {
-                    return false;
-                }
-            };
-
-            let Some(fun_body) = utils::get_fun_body(obj_prop.value.without_parentheses()) else {
-                // TO-DO
-                // add a warning
-                return false;
-            };
-
-            if fun_body.statements.len() == 1 {
-                match &fun_body.statements[0] {
-                    Statement::ReturnStatement(ret) => {
-                        if let Some(arg) = &ret.argument {
-                            self.ctx.module_exports.insert_export(
-                                export_name.clone(),
-                                arg.without_parentheses().clone_in(ctx.ast.allocator),
-                            );
-                            found = true;
-                        }
-                    }
-                    Statement::ExpressionStatement(expr) => {
-                        let export_value = expr.expression.without_parentheses();
-                        if matches!(
-                            export_value,
-                            Expression::Identifier(_) | Expression::StaticMemberExpression(_)
-                        ) {
-                            self.ctx.module_exports.insert_export(
-                                export_name.clone(),
-                                export_value.clone_in(ctx.ast.allocator),
-                            );
-                            found = true;
-                        }
-                    }
-                    _ => {}
-                }
-            } else {
-                // TO-DO
-                // add a warning
-            }
-        }
-        found
+impl<'a> RequireD5<'a> for Webpack5Impl<'a, '_> {
+    fn handle_export(&self, export_name: Atom<'a>, export_value: Expression<'a>) {
+        self.ctx
+            .module_exports
+            .insert_export(export_name, export_value);
     }
 }
 
