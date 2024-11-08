@@ -154,6 +154,8 @@ pub fn get_modules_form_webpack5<'a>(
 }
 
 struct Webpack5Ctx<'a> {
+    // errors: RefCell<Vec<OxcDiagnostic>>,
+
     pub source_text: &'a str,
     pub is_esm: RefCell<bool>,
     pub module_exports: ModuleExportsStore<'a>,

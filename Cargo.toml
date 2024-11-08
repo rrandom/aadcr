@@ -10,10 +10,9 @@ oxc_parser = { version = "0.31.0" }
 oxc_semantic = { version = "0.31.0" }
 oxc_span = { version = "0.31.0" }
 oxc_allocator = { version = "0.31.0" }
-oxc_transformer = { version = "0.31.0" }
 oxc_traverse = { version = "0.31.0" }
+oxc_diagnostics = { version = "0.31.0" }
 pico-args = { version = "0.5.0" }
-rustc-hash = { version = "2.*" }
 indexmap = { version = "2.3.0" }
-insta = { version = "1.39.0", features = ["json"] }
+insta = { version = "1.39.0" }
 normpath = { version = "1.3" }

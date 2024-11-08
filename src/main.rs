@@ -58,10 +58,18 @@ fn main() {
         }
     }
 
-    let result = Unpacker::new(&allocator, &mut program, &source_text).build(&output_dir);
+    let ret = Unpacker::new(&allocator, &mut program, &source_text).build(&output_dir);
 
-    println!("write to {output_dir} with {} files", result.files.len());
-    for file in result.files.iter() {
+    if !ret.errors.is_empty() {
+        println!("Unpacker Errors:");
+        for error in ret.errors {
+            let error = error.with_source_code(source_text.clone());
+            println!("{error:?}");
+        }
+    }
+
+    println!("write to {output_dir} with {} files", ret.files.len());
+    for file in ret.files.iter() {
         println!("  {}", file.display());
     }
 }

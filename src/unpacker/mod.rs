@@ -8,6 +8,7 @@ use normpath::PathExt;
 use oxc_allocator::Allocator;
 use oxc_ast::ast::Program;
 use oxc_codegen::CodeGenerator;
+use oxc_diagnostics::OxcDiagnostic;
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -59,7 +60,8 @@ pub struct UnpackReturn<'a> {
 pub type UnpackResult<'a> = Option<UnpackReturn<'a>>;
 
 #[derive(Default)]
-pub struct UnpackerResult<'a> {
+pub struct UnpackerReturn<'a> {
+    pub errors: std::vec::Vec<OxcDiagnostic>,
     pub files: std::vec::Vec<PathBuf>,
     pub modules: std::vec::Vec<Module<'a>>,
 }
@@ -85,13 +87,13 @@ impl<'a> Unpacker<'a> {
             .unwrap_or_default()
     }
 
-    pub fn build(&self, output_dir: &str) -> UnpackerResult<'a> {
+    pub fn build(&self, output_dir: &str) -> UnpackerReturn<'a> {
         let mut files = vec![];
 
         let mut unpack_result = self.unpack();
 
         if unpack_result.modules.is_empty() {
-            return UnpackerResult::default();
+            return UnpackerReturn::default();
         }
         for module in unpack_result.modules.iter_mut() {
             module.write_code();
@@ -128,9 +130,10 @@ impl<'a> Unpacker<'a> {
             fs::write(&path, module.code.as_ref().unwrap()).unwrap();
             files.push(path.into_path_buf());
         }
-        UnpackerResult {
+        UnpackerReturn {
             files,
             modules: unpack_result.modules,
+            errors: vec![],
         }
     }
 }
