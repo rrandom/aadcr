@@ -41,9 +41,7 @@ pub fn get_modules_form_webpack5<'a>(
             .clone_in(allocator)
     });
 
-    let Some(root_id) = nodes.root() else {
-        return None;
-    };
+    let root_id = nodes.root()?;
 
     let mut module_map = IndexMap::new();
 

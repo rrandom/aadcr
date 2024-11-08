@@ -8,7 +8,7 @@ use oxc_ast::{
 };
 use oxc_diagnostics::OxcDiagnostic;
 use oxc_semantic::{ScopeTree, SemanticBuilder, SymbolTable};
-use oxc_span::{GetSpan, Span};
+use oxc_span::{Atom, GetSpan, Span};
 use oxc_traverse::{Traverse, TraverseCtx};
 
 use crate::unpacker::Module;
@@ -199,6 +199,12 @@ impl<'a, 'ctx> Webpack4Impl<'a, 'ctx> {
 
 impl<'a> RequireR<'a> for Webpack4Impl<'a, '_> {}
 impl<'a> RequireD4<'a> for Webpack4Impl<'a, '_> {
+    fn handle_export(&self, export_name: Atom<'a>, export_value: Expression<'a>) {
+        self.ctx
+            .module_exports
+            .insert_export(export_name, export_value);
+    }
+
     fn error(&self, error: OxcDiagnostic) {
         self.ctx.error(error);
     }
@@ -225,14 +231,10 @@ impl<'a> Traverse<'a> for Webpack4Impl<'a, '_> {
     ) {
         let expr = &node.expression;
         let parent = ctx.parent();
-        if let Some((name, arg)) = self.get_require_d(expr, ctx) {
+        if self.get_require_d(expr, ctx) {
             if parent.is_expression_statement() || parent.is_sequence_expression() {
-                return;
             } else {
-                panic!(
-                    "Found unhandled require.d: {:?}: {:?}, {:?}",
-                    parent, name, arg
-                );
+                panic!("Found unhandled require.d: {:?}", parent);
             }
         }
     }
@@ -247,18 +249,11 @@ impl<'a> Traverse<'a> for Webpack4Impl<'a, '_> {
         if self.is_esm(expr, ctx) {
             self.ctx.is_esm.replace(true);
             *node = ctx.ast.statement_empty(es_span);
-        } else if let Some((name, arg)) = self.get_require_d(expr, ctx) {
-            self.ctx
-                .module_exports
-                .insert_export(name, arg.clone_in(ctx.ast.allocator));
-
+        } else if self.get_require_d(expr, ctx) {
             *node = ctx.ast.statement_empty(es_span);
         } else if let Expression::SequenceExpression(seq) = expr {
             seq.expressions.retain(|expr| {
-                if let Some((name, arg)) = self.get_require_d(expr, ctx) {
-                    self.ctx
-                        .module_exports
-                        .insert_export(name, arg.clone_in(ctx.ast.allocator));
+                if self.get_require_d(expr, ctx) {
                     return false;
                 }
                 true

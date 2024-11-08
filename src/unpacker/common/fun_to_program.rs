@@ -55,16 +55,11 @@ impl<'a> FunctionToProgram<'a> {
         program: &Program<'a>,
     ) -> Option<std::vec::Vec<SymbolId>> {
         let mut symbol_ids = vec![];
-        let Some(stmt) = program.body.first() else {
-            return None;
-        };
-
-        let Some(params) = (match stmt {
+        let stmt = program.body.first()?;
+        let params = (match stmt {
             Statement::ExpressionStatement(es) => get_fun_params(&es.expression),
             _ => return None,
-        }) else {
-            return None;
-        };
+        })?;
 
         for param in params.iter() {
             let BindingPatternKind::BindingIdentifier(binding) = &param.pattern.kind else {

@@ -19,7 +19,7 @@ fn webpack5() {
 
     assert!(ret.errors.is_empty());
 
-    let mut program = ret.program;
+    let program = ret.program;
 
     let ret = SemanticBuilder::new(&source_text)
         .with_excess_capacity(2.0)
@@ -27,7 +27,7 @@ fn webpack5() {
 
     assert!(ret.errors.is_empty());
 
-    let unpack_result = get_modules_form_webpack5(&allocator, &mut program, &source_text);
+    let unpack_result = get_modules_form_webpack5(&allocator, &program, &source_text);
 
     assert!(unpack_result.is_some());
 

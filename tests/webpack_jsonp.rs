@@ -19,7 +19,7 @@ fn webpack_jsonp() {
 
     assert!(ret.errors.is_empty());
 
-    let mut program = ret.program;
+    let program = ret.program;
 
     let ret = SemanticBuilder::new(&source_text)
         .with_excess_capacity(2.0)
@@ -27,7 +27,7 @@ fn webpack_jsonp() {
 
     assert!(ret.errors.is_empty());
 
-    let unpack_result = get_modules_form_jsonp(&allocator, &mut program);
+    let unpack_result = get_modules_form_jsonp(&allocator, &program);
 
     assert!(unpack_result.is_some());
 

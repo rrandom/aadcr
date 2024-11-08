@@ -42,7 +42,7 @@ fn main() {
         }
     }
 
-    let mut program = ret.program;
+    let program = ret.program;
     // let trivias = ret.trivias;
 
     let ret = SemanticBuilder::new(&source_text)
@@ -58,7 +58,7 @@ fn main() {
         }
     }
 
-    let ret = Unpacker::new(&allocator, &mut program, &source_text).build(&output_dir);
+    let ret = Unpacker::new(&allocator, &program, &source_text).build(&output_dir);
 
     if !ret.errors.is_empty() {
         println!("Unpacker Errors:");

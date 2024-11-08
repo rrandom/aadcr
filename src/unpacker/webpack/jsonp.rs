@@ -44,9 +44,7 @@ pub fn get_modules_form_jsonp<'a>(
             .clone_in(allocator)
     });
 
-    if nodes.root().is_none() {
-        return None;
-    }
+    nodes.root()?;
 
     let mut module_map = IndexMap::new();
 
@@ -207,6 +205,12 @@ impl<'a, 'ctx> WebpackJsonpImpl<'a, 'ctx> {
 
 impl<'a> RequireR<'a> for WebpackJsonpImpl<'a, '_> {}
 impl<'a> RequireD4<'a> for WebpackJsonpImpl<'a, '_> {
+    fn handle_export(&self, export_name: Atom<'a>, export_value: Expression<'a>) {
+        self.ctx
+            .module_exports
+            .insert_export(export_name, export_value);
+    }
+
     fn error(&self, error: OxcDiagnostic) {
         self.ctx.error(error);
     }
@@ -227,11 +231,7 @@ impl<'a> WebpackJsonpImpl<'a, '_> {
     fn get_require_d_webpack5<'b>(&self, expr: &'b Expression<'a>, ctx: &TraverseCtx<'a>) -> bool {
         RequireD5::get_require_d(self, expr, ctx)
     }
-    fn get_require_d_webpack4<'b>(
-        &self,
-        expr: &'b Expression<'a>,
-        ctx: &TraverseCtx<'a>,
-    ) -> Option<(Atom<'a>, &'b Expression<'a>)> {
+    fn get_require_d_webpack4<'b>(&self, expr: &'b Expression<'a>, ctx: &TraverseCtx<'a>) -> bool {
         RequireD4::get_require_d(self, expr, ctx)
     }
 }
@@ -260,22 +260,12 @@ impl<'a> Traverse<'a> for WebpackJsonpImpl<'a, '_> {
         if self.is_esm(expr, ctx) {
             self.ctx.is_esm.replace(true);
             *statement = ctx.ast.statement_empty(es_span);
-        } else if self.get_require_d_webpack5(expr, ctx) {
-            *statement = ctx.ast.statement_empty(es_span);
-        } else if let Some((name, arg)) = self.get_require_d_webpack4(expr, ctx) {
-            self.ctx
-                .module_exports
-                .insert_export(name, arg.clone_in(ctx.ast.allocator));
-
+        } else if self.get_require_d_webpack5(expr, ctx) || self.get_require_d_webpack4(expr, ctx) {
             *statement = ctx.ast.statement_empty(es_span);
         } else if let Expression::SequenceExpression(seq) = expr {
             seq.expressions.retain(|expr| {
-                if self.get_require_d_webpack5(expr, ctx) {
-                    return false;
-                } else if let Some((name, arg)) = self.get_require_d_webpack4(expr, ctx) {
-                    self.ctx
-                        .module_exports
-                        .insert_export(name, arg.clone_in(ctx.ast.allocator));
+                if self.get_require_d_webpack5(expr, ctx) || self.get_require_d_webpack4(expr, ctx)
+                {
                     return false;
                 }
                 true

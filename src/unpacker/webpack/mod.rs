@@ -36,6 +36,8 @@ pub trait RequireR<'a> {
 
 /// webpack4 version of `require.d`
 pub trait RequireD4<'a> {
+    fn handle_export(&self, export_name: Atom<'a>, export_value: Expression<'a>);
+
     fn error(&self, error: OxcDiagnostic);
 
     /// if a call expression is `require.d`, return true, and add exports to module_exports
@@ -44,46 +46,38 @@ pub trait RequireD4<'a> {
     ///     return moduleContent;
     /// })
     /// ```
-    fn get_require_d<'b>(
-        &self,
-        expr: &'b Expression<'a>,
-        _ctx: &TraverseCtx<'a>,
-    ) -> Option<(Atom<'a>, &'b Expression<'a>)> {
+    fn get_require_d<'b>(&self, expr: &'b Expression<'a>, ctx: &TraverseCtx<'a>) -> bool {
         let Expression::CallExpression(call_expr) = expr else {
-            return None;
+            return false;
         };
         let Expression::StaticMemberExpression(mem) = &call_expr.callee else {
-            return None;
+            return false;
         };
         let (Expression::Identifier(idf), IdentifierName { name, .. }) =
             (&mem.object, &mem.property)
         else {
-            return None;
+            return false;
         };
         if name.as_str() != "d" || idf.name != "require" {
-            return None;
+            return false;
         };
         if call_expr.arguments.len() != 3 {
-            return None;
+            return false;
         };
         let [Argument::Identifier(_), Argument::StringLiteral(name), Argument::FunctionExpression(fun)] =
             call_expr.arguments.as_slice()
         else {
-            return None;
+            return false;
         };
-        let Some(body) = &fun.body else { return None };
+        let Some(body) = &fun.body else { return false };
         if body.statements.len() != 1 {
             self.error(OxcDiagnostic::error("Unexpected module content").with_label(fun.span()));
-            return None;
+            return false;
         };
 
         let Some(export_value) = (match &body.statements[0] {
             Statement::ReturnStatement(ret) => {
-                if let Some(arg) = &ret.argument {
-                    Some(arg.without_parentheses())
-                } else {
-                    None
-                }
+                ret.argument.as_ref().map(|arg| arg.without_parentheses())
             }
             Statement::ExpressionStatement(expr) => {
                 if matches!(
@@ -98,10 +92,11 @@ pub trait RequireD4<'a> {
             _ => None,
         }) else {
             self.error(OxcDiagnostic::error("Unexpected module content").with_label(fun.span()));
-            return None;
+            return false;
         };
 
-        Some((name.value.clone(), export_value))
+        self.handle_export(name.value.clone(), export_value.clone_in(ctx.ast.allocator));
+        true
     }
 }
 
@@ -162,11 +157,7 @@ pub trait RequireD5<'a> {
             if fun_body.statements.len() == 1 {
                 let Some(export_value) = (match &fun_body.statements[0] {
                     Statement::ReturnStatement(ret) => {
-                        if let Some(arg) = &ret.argument {
-                            Some(arg.without_parentheses())
-                        } else {
-                            None
-                        }
+                        ret.argument.as_ref().map(|arg| arg.without_parentheses())
                     }
                     Statement::ExpressionStatement(expr) => {
                         let export_value = expr.expression.without_parentheses();
