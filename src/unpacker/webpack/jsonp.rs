@@ -43,9 +43,9 @@ pub fn get_modules_form_jsonp<'a>(
             .clone_in(allocator)
     });
 
-    let Some(root_id) = nodes.root() else {
+    if nodes.root().is_none() {
         return None;
-    };
+    }
 
     let mut module_map = IndexMap::new();
 
@@ -150,7 +150,6 @@ struct WebPackJsonp<'a> {
     allocator: &'a Allocator,
 }
 
-#[derive(Debug)]
 struct WebpackJsonpReturn {
     pub is_esm: bool,
 }
