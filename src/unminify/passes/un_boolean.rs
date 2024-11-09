@@ -3,13 +3,25 @@ use oxc_traverse::{Traverse, TraverseCtx};
 
 use crate::unminify::UnminifyCtx;
 
+use super::UnminifyPass;
+
 pub struct UnBoolean<'a, 'ctx> {
     ctx: &'ctx UnminifyCtx<'a>,
+    changed: bool,
 }
 
 impl<'a, 'ctx> UnBoolean<'a, 'ctx> {
     pub fn new(ctx: &'ctx UnminifyCtx<'a>) -> Self {
-        Self { ctx }
+        Self {
+            ctx,
+            changed: false,
+        }
+    }
+}
+
+impl<'a> UnminifyPass<'a> for UnBoolean<'a, '_> {
+    fn changed(&self) -> bool {
+        self.changed
     }
 }
 
@@ -23,14 +35,27 @@ impl<'a> Traverse<'a> for UnBoolean<'a, '_> {
             *node = ctx
                 .ast
                 .expression_boolean_literal(expr.span, value.raw == "0");
+            self.changed = true;
         }
     }
 }
 
 #[cfg(test)]
-mod tests {
+mod test {
 
-    use crate::unminify::passes::tests::run_test;
+    use super::UnminifyCtx;
+    use oxc_allocator::Allocator;
+    use oxc_span::SourceType;
+
+    use crate::unminify::passes::tests::tester;
+
+    fn run_test(source_text: &str, expected: &str) {
+        let allocator = Allocator::default();
+        let ctx = UnminifyCtx::new(source_text, &SourceType::mjs());
+
+        let mut pass = super::UnBoolean::new(&ctx);
+        tester(&allocator, source_text, expected, &mut pass);
+    }
 
     #[test]
     fn test_un_boolean() {
