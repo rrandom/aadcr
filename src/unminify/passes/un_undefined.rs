@@ -1,4 +1,4 @@
-use oxc_ast::ast::{Expression};
+use oxc_ast::ast::Expression;
 use oxc_traverse::{Traverse, TraverseCtx};
 
 use super::UnminifyPass;
@@ -21,7 +21,6 @@ impl UnminifyPass<'_> for UnUndefined {
 
 impl<'a> Traverse<'a> for UnUndefined {
     fn enter_expression(&mut self, node: &mut Expression<'a>, ctx: &mut TraverseCtx<'a>) {
-      println!("{:?}", node);
         if let Expression::UnaryExpression(expr) = node
             && expr.operator.is_void()
             && expr.argument.without_parentheses().is_number()
