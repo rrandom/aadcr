@@ -56,6 +56,7 @@ pub fn get_modules_form_jsonp<'a>(
         }) = node.kind()
             && let Expression::StaticMemberExpression(callee) = callee.without_parentheses()
             && let [Argument::ArrayExpression(arg)] = arguments.as_slice()
+            && arg.elements.len() >= 2
             && let [ArrayExpressionElement::ArrayExpression(_chunk_ids), ArrayExpressionElement::ObjectExpression(more_modules)] =
                 &arg.elements.as_slice()[0..2]
             && let Expression::AssignmentExpression(assign_expr) =
@@ -264,7 +265,7 @@ impl<'a> Traverse<'a> for WebpackJsonpImpl<'a, '_> {
             *statement = ctx.ast.statement_empty(es_span);
         } else if let Expression::SequenceExpression(seq) = expr {
             seq.expressions.retain(|expr| {
-                if self.get_require_d_webpack5(expr, ctx) || self.get_require_d_webpack4(expr, ctx)
+                if self.is_esm(expr, ctx) || self.get_require_d_webpack5(expr, ctx) || self.get_require_d_webpack4(expr, ctx)
                 {
                     return false;
                 }

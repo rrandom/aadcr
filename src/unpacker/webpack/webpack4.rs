@@ -253,7 +253,7 @@ impl<'a> Traverse<'a> for Webpack4Impl<'a, '_> {
             *node = ctx.ast.statement_empty(es_span);
         } else if let Expression::SequenceExpression(seq) = expr {
             seq.expressions.retain(|expr| {
-                if self.get_require_d(expr, ctx) {
+                if self.is_esm(expr, ctx) || self.get_require_d(expr, ctx) {
                     return false;
                 }
                 true
