@@ -1,9 +1,9 @@
 use oxc_traverse::Traverse;
 
 pub mod un_boolean;
-pub mod un_undefined;
 pub mod un_infinity;
-
+pub mod un_numeric_literal;
+pub mod un_undefined;
 pub trait UnminifyPass<'a>: Traverse<'a> {
     fn changed(&self) -> bool;
 }

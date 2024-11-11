@@ -52,7 +52,6 @@ impl<'a> Traverse<'a> for UnInfinity {
                 }
                 _ => {}
             };
-            self.changed = true;
         }
     }
 }

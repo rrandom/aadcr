@@ -26,7 +26,6 @@ impl<'a> Traverse<'a> for UnUndefined {
             && expr.argument.without_parentheses().is_number()
             && ctx.scopes().get_root_binding("undefined").is_none()
         {
-
             *node = ctx
                 .ast
                 .expression_identifier_reference(expr.span, "undefined");
@@ -60,14 +59,14 @@ mod test {
           ",
         );
 
-                run_test(
-                    "void 0
+        run_test(
+            "void 0
         void 99
         void(0)",
-                    "undefined
+            "undefined
         undefined
         undefined",
-                );
+        );
 
         run_test(
             "void function() {
