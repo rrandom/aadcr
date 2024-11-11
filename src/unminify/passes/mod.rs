@@ -1,6 +1,7 @@
 use oxc_traverse::Traverse;
 
 pub mod un_boolean;
+pub mod un_undefined;
 
 pub trait UnminifyPass<'a>: Traverse<'a> {
     fn changed(&self) -> bool;

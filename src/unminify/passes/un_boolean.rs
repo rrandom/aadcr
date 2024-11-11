@@ -1,4 +1,4 @@
-use oxc_ast::ast::{Expression, UnaryOperator};
+use oxc_ast::ast::Expression;
 use oxc_traverse::{Traverse, TraverseCtx};
 
 use crate::unminify::UnminifyCtx;
@@ -28,7 +28,7 @@ impl<'a> UnminifyPass<'a> for UnBoolean<'a, '_> {
 impl<'a> Traverse<'a> for UnBoolean<'a, '_> {
     fn enter_expression(&mut self, node: &mut Expression<'a>, ctx: &mut TraverseCtx<'a>) {
         if let Expression::UnaryExpression(expr) = node
-            && expr.operator == UnaryOperator::LogicalNot
+            && expr.operator.is_not()
             && let Expression::NumericLiteral(value) = &expr.argument
             && (value.raw == "0" || value.raw == "1")
         {
