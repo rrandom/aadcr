@@ -3,7 +3,6 @@ use oxc_ast::ast::{Expression, Statement};
 use oxc_span::Span;
 use oxc_traverse::{Traverse, TraverseCtx};
 
-
 use super::UnminifyPass;
 
 /// Separate sequence expressions into multiple statements.

@@ -44,7 +44,13 @@ mod test {
         let allocator = Allocator::default();
 
         let mut pass = super::UnNumericLiteral::new();
-        tester(&allocator, "test_un_numeric_literal", source_text, expected, &mut pass);
+        tester(
+            &allocator,
+            "test_un_numeric_literal",
+            source_text,
+            expected,
+            &mut pass,
+        );
     }
 
     #[test]

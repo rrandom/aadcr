@@ -1,7 +1,10 @@
 mod passes;
 
 use oxc_allocator::Allocator;
-use oxc_ast::ast::{Expression, Program};
+use oxc_ast::{
+    ast::{Expression, Program},
+    Trivias,
+};
 use oxc_semantic::{ScopeTree, SymbolTable};
 use oxc_span::SourceType;
 use oxc_traverse::{traverse_mut, Traverse, TraverseCtx};
@@ -9,13 +12,15 @@ use oxc_traverse::{traverse_mut, Traverse, TraverseCtx};
 pub struct UnminifyCtx<'a> {
     pub source_text: &'a str,
     pub source_type: SourceType,
+    pub trivial: Trivias,
 }
 
 impl<'a> UnminifyCtx<'a> {
-    pub fn new(source_text: &'a str, source_type: &SourceType) -> Self {
+    pub fn new(source_text: &'a str, source_type: SourceType) -> Self {
         Self {
             source_text,
-            source_type: *source_type,
+            source_type,
+            trivial: Trivias::default(),
         }
     }
 }
@@ -30,10 +35,7 @@ pub struct Unminify<'a> {
 impl<'a> Unminify<'a> {
     pub fn new(source_text: &'a str, allocator: &'a Allocator) -> Self {
         Self {
-            ctx: UnminifyCtx {
-                source_text,
-                source_type: SourceType::default(),
-            },
+            ctx: UnminifyCtx::new(source_text, SourceType::default()),
             options: UnminifyOptions {},
             allocator,
         }

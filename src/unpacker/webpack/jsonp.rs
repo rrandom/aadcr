@@ -265,7 +265,9 @@ impl<'a> Traverse<'a> for WebpackJsonpImpl<'a, '_> {
             *statement = ctx.ast.statement_empty(es_span);
         } else if let Expression::SequenceExpression(seq) = expr {
             seq.expressions.retain(|expr| {
-                if self.is_esm(expr, ctx) || self.get_require_d_webpack5(expr, ctx) || self.get_require_d_webpack4(expr, ctx)
+                if self.is_esm(expr, ctx)
+                    || self.get_require_d_webpack5(expr, ctx)
+                    || self.get_require_d_webpack4(expr, ctx)
                 {
                     return false;
                 }
