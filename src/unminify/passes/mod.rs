@@ -3,6 +3,7 @@ use oxc_traverse::Traverse;
 pub mod un_boolean;
 pub mod un_infinity;
 pub mod un_numeric_literal;
+pub mod un_typeof;
 pub mod un_undefined;
 pub trait UnminifyPass<'a>: Traverse<'a> {
     fn changed(&self) -> bool;
@@ -29,7 +30,7 @@ pub mod tests {
         let expected = run::<P>(allocator, expected, None);
         assert_eq!(
             result, expected,
-            "{name}\nfor source:\n{source_text}\nexpect:\n{expected}\ngot:\n{result}"
+            "\n{name}\nfor source:\n{source_text}\nexpect:\n{expected}\ngot:\n{result}"
         );
     }
 
