@@ -1,5 +1,5 @@
 use oxc_allocator::CloneIn;
-use oxc_ast::ast::{BinaryOperator, Expression, NumberBase, NumericLiteral, UnaryOperator};
+use oxc_ast::ast::{BinaryOperator, Expression, UnaryOperator};
 use oxc_span::Span;
 use oxc_traverse::{Traverse, TraverseCtx};
 
@@ -98,7 +98,7 @@ impl<'a> UnTypeof {
     ) -> oxc_ast::ast::BinaryExpression<'a> {
         ctx.ast.binary_expression(
             span,
-            left.clone_in(&ctx.ast.allocator),
+            left.clone_in(ctx.ast.allocator),
             operator,
             ctx.ast
                 .expression_string_literal(Span::default(), "undefined"),
