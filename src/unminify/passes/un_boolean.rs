@@ -54,7 +54,7 @@ mod test {
         let ctx = UnminifyCtx::new(source_text, &SourceType::mjs());
 
         let mut pass = super::UnBoolean::new(&ctx);
-        tester(&allocator, source_text, expected, &mut pass);
+        tester(&allocator, "test_un_boolean", source_text, expected, &mut pass);
     }
 
     #[test]

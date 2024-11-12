@@ -23,11 +23,11 @@ impl UnminifyPass<'_> for UnNumericLiteral {
 
 impl<'a> Traverse<'a> for UnNumericLiteral {
     fn enter_numeric_literal(&mut self, node: &mut NumericLiteral<'a>, ctx: &mut TraverseCtx<'a>) {
-        if !node.base.is_base_10() {
+        if !node.base.is_base_10() || format!("{}", node.value) != node.raw {
             *node = ctx.ast.numeric_literal(
                 node.span,
                 node.value,
-                format!("{:.0}", node.value as u64),
+                format!("{}", node.value),
                 NumberBase::Decimal,
             );
             self.changed = true;
@@ -44,12 +44,11 @@ mod test {
         let allocator = Allocator::default();
 
         let mut pass = super::UnNumericLiteral::new();
-        tester(&allocator, source_text, expected, &mut pass);
+        tester(&allocator, "test_un_numeric_literal", source_text, expected, &mut pass);
     }
 
     #[test]
     fn test_un_numeric_literal() {
-        println!("aaa");
         run_test(
             "65536;
 123.4;

@@ -39,16 +39,17 @@ mod test {
     use crate::unminify::passes::tests::tester;
     use oxc_allocator::Allocator;
 
-    fn run_test(source_text: &str, expected: &str) {
+    fn run_test(name: &str, source_text: &str, expected: &str) {
         let allocator = Allocator::default();
 
         let mut pass = super::UnUndefined::new();
-        tester(&allocator, source_text, expected, &mut pass);
+        tester(&allocator, name, source_text, expected, &mut pass);
     }
 
     #[test]
     fn test_un_undefined() {
         run_test(
+            "transform void 0",
             "if(void 0 !== a) {
             console.log('a')
           }
@@ -60,6 +61,7 @@ mod test {
         );
 
         run_test(
+            "void literal",
             "void 0
         void 99
         void(0)",
@@ -69,6 +71,7 @@ mod test {
         );
 
         run_test(
+            "void function",
             "void function() {
   console.log('a')
   return void a()
@@ -80,6 +83,7 @@ mod test {
         );
 
         run_test(
+            "not transform when undefined declared in scope",
             "var undefined = 42;
 console.log(void 0);
 
