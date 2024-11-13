@@ -1,7 +1,8 @@
-use oxc_allocator::CloneIn;
+use oxc_allocator::{CloneIn, Vec};
 use oxc_ast::ast::{Expression, Statement};
 use oxc_span::Span;
 use oxc_traverse::{Traverse, TraverseCtx};
+
 
 use super::UnminifyPass;
 
@@ -90,6 +91,58 @@ impl<'a> Traverse<'a> for UnSequenceExpr {
             }
         }
     }
+    
+
+    fn exit_program(&mut self, node: &mut oxc_ast::ast::Program<'a>, ctx: &mut TraverseCtx<'a>) {
+        self.unfuse_statements(&mut node.body, ctx);
+    }
+}
+
+impl<'a> UnSequenceExpr {
+    fn unfuse_statements(&mut self, statements: &mut Vec<'a, Statement<'a>>, ctx: &mut TraverseCtx<'a>) {
+        let mut i = 0;
+        while i < statements.len() {
+            let mut replacement = ctx.ast.vec();
+
+            match &mut statements.get_mut(i).unwrap() {
+                Statement::ReturnStatement(ret) if let Some(expr) = ret.argument.as_ref()
+                && let Expression::SequenceExpression(expr) = expr.without_parentheses() =>             {
+                    let exprs = expr.expressions.clone_in(ctx.ast.allocator);
+                    if let Some((last, exprs)) = exprs.split_last() {
+                        for expr in exprs {
+                            replacement.push(ctx.ast.statement_expression(
+                                Span::default(),
+                                expr.clone_in(ctx.ast.allocator),
+                            ));
+                        }
+                        replacement.push(ctx.ast.statement_return(
+                            Span::default(),
+                            Some(last.clone_in(ctx.ast.allocator)),
+                        ));
+                        statements.splice(i..i+1, replacement);
+                        i += exprs.len();
+                        continue;
+                    }
+                }
+                Statement::IfStatement(if_stmt) => {
+                    if let Expression::SequenceExpression(expr) = if_stmt.test.clone_in(ctx.ast.allocator).without_parentheses() {
+                        let exprs = expr.expressions.clone_in(ctx.ast.allocator);
+                        if let Some((last, exprs)) = exprs.split_last() {
+                            if_stmt.test = last.clone_in(ctx.ast.allocator);
+                            for expr in exprs {
+                                replacement.push(ctx.ast.statement_expression(Span::default(), expr.clone_in(ctx.ast.allocator)));
+                            }
+                            statements.splice(i..i, replacement);
+                            i += exprs.len();
+                            continue;
+                        }
+                    }
+                }
+                _ => {}
+            }
+            i += 1;
+        }
+    }
 }
 
 #[cfg(test)]
@@ -123,6 +176,52 @@ var bar = (m => {
   m.c = 3;
   return m.c;
 })();
+"#,
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn test_un_sequence_expr_return() {
+        run_test(
+            "test_un_sequence_expr_return",
+            r#"
+            if(a) return b(), c();
+else return d = 1, e = 2, f = 3;
+
+return a(), b(), c()
+"#,
+            r#"
+            if (a) {
+  b();
+  return c();
+} else {
+  d = 1;
+  e = 2;
+  f = 3;
+  return f;
+}
+
+a();
+b();
+return c();
+"#,
+        );
+    }
+
+    #[test]
+    fn test_un_sequence_expr_if() {
+        run_test(
+            "test_un_sequence_expr_if",
+            r#"if (a(), b(), c()) {
+  d()
+}"#,
+            r#"a();
+b();
+
+if (c()) {
+  d();
+}
 "#,
         );
     }
