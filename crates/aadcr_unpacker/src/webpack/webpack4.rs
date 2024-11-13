@@ -8,7 +8,7 @@ use oxc_ast::{
 };
 use oxc_diagnostics::OxcDiagnostic;
 use oxc_semantic::{ScopeTree, SemanticBuilder, SymbolTable};
-use oxc_span::{Atom, GetSpan, Span};
+use oxc_span::{Atom, GetSpan, Span, SPAN};
 use oxc_traverse::{Traverse, TraverseCtx};
 
 use crate::{
@@ -29,7 +29,7 @@ pub fn get_modules_form_webpack4<'a>(
 
     let mut factory_id = None;
     let mut entry_ids = vec![];
-    let mut factory_callee_span = Some(Span::default());
+    let mut factory_callee_span = Some(SPAN);
     let mut module_funs = vec![];
 
     let nodes = semantic.nodes();
@@ -118,7 +118,7 @@ pub fn get_modules_form_webpack4<'a>(
             .unwrap_or_else(|| ast.vec());
 
         let mut program = ast.program(
-            Span::default(),
+            SPAN,
             program_source_type.unwrap().clone_in(allocator),
             None,
             directives,

@@ -10,7 +10,7 @@ use oxc_ast::{
 };
 use oxc_diagnostics::OxcDiagnostic;
 use oxc_semantic::SemanticBuilder;
-use oxc_span::Span;
+use oxc_span::SPAN;
 
 use crate::{common::fun_to_program::FunctionToProgram, Module};
 
@@ -151,14 +151,14 @@ pub fn get_modules_form_browserify<'a>(
 
     let mut modules = vec![];
     for (module_id, expr) in module_map {
-        let fun_statement = ast.statement_expression(Span::default(), expr.clone_in(allocator));
+        let fun_statement = ast.statement_expression(SPAN, expr.clone_in(allocator));
 
         let directives = program_directives
             .clone_in(allocator)
             .unwrap_or_else(|| ast.vec());
 
         let mut program = ast.program(
-            Span::default(),
+            SPAN,
             program_source_type.unwrap().clone_in(allocator),
             None,
             directives,
