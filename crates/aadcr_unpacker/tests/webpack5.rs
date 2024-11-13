@@ -1,14 +1,14 @@
 use std::path::Path;
 
-use aadcr::unpacker::browserify::get_modules_form_browserify;
+use aadcr_unpacker::webpack::webpack5::get_modules_form_webpack5;
 use oxc_allocator::Allocator;
 use oxc_parser::Parser;
 use oxc_semantic::SemanticBuilder;
 use oxc_span::SourceType;
 
 #[test]
-fn browserify() {
-    let name = "tests/fixtures/browserify.js";
+fn webpack5() {
+    let name = "tests/fixtures/webpack5/dist/index.js";
     let path = Path::new(&name);
     let source_text = std::fs::read_to_string(path).expect("{name} not found");
 
@@ -27,16 +27,16 @@ fn browserify() {
 
     assert!(ret.errors.is_empty());
 
-    let unpack_result = get_modules_form_browserify(&allocator, &program);
+    let unpack_result = get_modules_form_webpack5(&allocator, &program, &source_text);
 
     assert!(unpack_result.is_some());
 
     let mut result = unpack_result.unwrap();
 
-    assert_eq!(result.modules.len(), 4);
+    assert_eq!(result.modules.len(), 7);
 
     insta::with_settings!({ prepend_module_to_snapshot => false, omit_expression => true }, {
-      insta::assert_debug_snapshot!("browserify", result
+      insta::assert_debug_snapshot!("webpack5", result
         .modules
         .iter_mut()
         .map(|m| {

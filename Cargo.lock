@@ -3,7 +3,21 @@
 version = 4
 
 [[package]]
-name = "aadcr"
+name = "aadcr_unminify"
+version = "0.1.0"
+dependencies = [
+ "oxc_allocator",
+ "oxc_ast",
+ "oxc_codegen",
+ "oxc_diagnostics",
+ "oxc_parser",
+ "oxc_semantic",
+ "oxc_span",
+ "oxc_traverse",
+]
+
+[[package]]
+name = "aadcr_unpacker"
 version = "0.1.0"
 dependencies = [
  "indexmap",

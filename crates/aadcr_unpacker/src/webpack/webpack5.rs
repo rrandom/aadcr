@@ -2,10 +2,7 @@ use indexmap::IndexMap;
 
 use oxc_allocator::{Allocator, CloneIn};
 use oxc_ast::{
-    ast::{
-        Argument, ArrayExpressionElement, CallExpression, Expression, LogicalOperator,
-        MemberExpression, ObjectPropertyKind, Program, PropertyKey, Statement,
-    },
+    ast::{Expression, ExpressionStatement, ObjectPropertyKind, Program, Statement},
     AstBuilder, AstKind,
 };
 use oxc_diagnostics::OxcDiagnostic;
@@ -13,23 +10,23 @@ use oxc_semantic::{ScopeTree, SemanticBuilder, SymbolTable};
 use oxc_span::{Atom, Span};
 use oxc_traverse::{Traverse, TraverseCtx};
 
-use crate::unpacker::{
-    common::{fun_to_program::FunctionToProgram, ModuleCtx},
+use crate::{
+    common::{fun_to_program::FunctionToProgram, utils, ModuleCtx},
     Module, UnpackResult, UnpackReturn,
 };
 
-use super::{RequireD4, RequireD5, RequireR};
+use super::{RequireD5, RequireR};
 
-pub fn get_modules_form_jsonp<'a>(
+pub fn get_modules_form_webpack5<'a>(
     allocator: &'a Allocator,
     program: &Program<'a>,
+    source_text: &'a str,
 ) -> UnpackResult<'a> {
     let ast = AstBuilder::new(allocator);
 
     let semantic = SemanticBuilder::new("").build(program).semantic;
 
     let nodes = semantic.nodes();
-
     let program_source_type = nodes
         .root()
         .map(|id| nodes.get_node(id).kind().as_program().unwrap().source_type);
@@ -44,78 +41,86 @@ pub fn get_modules_form_jsonp<'a>(
             .clone_in(allocator)
     });
 
-    nodes.root()?;
+    let root_id = nodes.root()?;
 
     let mut module_map = IndexMap::new();
 
-    let self_variable_names = ["self", "window"];
+    let mut errors = vec![];
 
     for node in nodes.iter() {
-        if let AstKind::CallExpression(CallExpression {
-            callee, arguments, ..
-        }) = node.kind()
-            && let Expression::StaticMemberExpression(callee) = callee.without_parentheses()
-            && let [Argument::ArrayExpression(arg)] = arguments.as_slice()
-            && arg.elements.len() >= 2
-            && let [ArrayExpressionElement::ArrayExpression(_chunk_ids), ArrayExpressionElement::ObjectExpression(more_modules)] =
-                &arg.elements.as_slice()[0..2]
-            && let Expression::AssignmentExpression(assign_expr) =
-                callee.object.without_parentheses()
-            && "push" == callee.property.name.as_str()
-            && more_modules.properties.len() > 0
-        {
-            let props = &more_modules.properties;
-
-            if !props.iter().all(|prop| {
-                let ObjectPropertyKind::ObjectProperty(prop) = prop else {
-                    return false;
-                };
-                matches!(
-                    prop.key,
-                    PropertyKey::StringLiteral(_) | PropertyKey::NumericLiteral(_)
-                ) && matches!(
-                    prop.value.without_parentheses(),
-                    Expression::FunctionExpression(_)
-                )
-            }) {
-                continue;
-            }
-
-            if let Some(MemberExpression::StaticMemberExpression(assign_left)) =
-                assign_expr.left.as_member_expression()
-                && let Expression::LogicalExpression(or_expr) = &assign_expr.right
-                && let Expression::Identifier(idf) = assign_left.object.without_parentheses()
-                && or_expr.operator == LogicalOperator::Or
-                && let Expression::StaticMemberExpression(or_left) =
-                    or_expr.left.without_parentheses()
-                && let Expression::ArrayExpression(or_right) = or_expr.right.without_parentheses()
-                && self_variable_names.contains(&idf.name.as_str())
-                && let Expression::Identifier(or_left_obj) = or_left.object.without_parentheses()
-                && self_variable_names.contains(&or_left_obj.name.as_str())
-                && or_right.elements.len() == 0
+        match node.kind() {
+            AstKind::ExpressionStatement(ExpressionStatement { expression, .. })
+                if nodes.parent_id(node.id()) == Some(root_id) =>
             {
-                for prop in more_modules.properties.iter() {
-                    let ObjectPropertyKind::ObjectProperty(prop) = prop else {
-                        unreachable!()
-                    };
+                let Some(fun_body) = utils::get_iife_callee(expression)
+                    .and_then(|fun_expr| utils::get_fun_body(fun_expr))
+                else {
+                    continue;
+                };
 
-                    let module_id = match &prop.key {
-                        PropertyKey::StringLiteral(s) => s.value.to_string(),
-                        PropertyKey::NumericLiteral(n) => n.value.to_string(),
-                        _ => unreachable!(),
+                for st in fun_body.statements.iter() {
+                    let Statement::VariableDeclaration(vardecl) = st else {
+                        continue;
                     };
+                    let de = &vardecl.declarations[0];
 
-                    module_map.insert(module_id, &prop.value);
+                    let Some(init) = &de.init else {
+                        continue;
+                    };
+                    let Expression::ObjectExpression(ob) = init.without_parentheses() else {
+                        continue;
+                    };
+                    for prop in ob.properties.iter() {
+                        let ObjectPropertyKind::ObjectProperty(obj_prop) = prop else {
+                            continue;
+                        };
+                        let Some(Expression::StringLiteral(key)) = obj_prop.key.as_expression()
+                        else {
+                            continue;
+                        };
+                        let module_id = &key.value;
+
+                        let expr = obj_prop.value.without_parentheses();
+
+                        match expr {
+                            Expression::ArrowFunctionExpression(_)
+                            | Expression::FunctionExpression(_) => {
+                                module_map.insert(module_id.as_str(), expr);
+                            }
+                            _ => {
+                                continue;
+                            }
+                        }
+                    }
+                }
+
+                let last_st = fun_body.statements.last();
+
+                if let Some(Statement::ExpressionStatement(expr)) = last_st
+                    && let Some(fun_expr) = utils::get_iife_callee(&expr.expression)
+                {
+                    match fun_expr {
+                        Expression::ArrowFunctionExpression(_)
+                        | Expression::FunctionExpression(_) => {
+                            module_map.insert("entry.js", fun_expr);
+                        }
+                        _ => {
+                            continue;
+                        }
+                    }
+                } else {
+                    errors.push(OxcDiagnostic::error(
+                        "The last statement in the IIFE must be an expression",
+                    ));
                 }
             }
+            _ => {}
         }
     }
 
     if module_map.is_empty() {
         return None;
     }
-
-    let mut errors = vec![];
 
     let mut modules = vec![];
     for (module_id, expr) in module_map {
@@ -136,10 +141,13 @@ pub fn get_modules_form_jsonp<'a>(
         let mut fun_renamer = FunctionToProgram::new(allocator, ["module", "exports", "require"]);
         fun_renamer.build(&mut program);
 
-        let ret = WebPackJsonp::new(allocator, "").build(&mut program);
+        let ret = WebPack5::new(allocator, source_text).build(&mut program);
 
-        modules.push(Module::new(module_id.to_string(), false, program));
-
+        modules.push(Module::new(
+            module_id.to_string(),
+            module_id == "entry.js",
+            program,
+        ));
         errors.extend(ret.errors);
     }
 
@@ -150,23 +158,24 @@ pub fn get_modules_form_jsonp<'a>(
     })
 }
 
-struct WebPackJsonp<'a> {
+struct WebPack5<'a> {
     ctx: ModuleCtx<'a>,
     allocator: &'a Allocator,
 }
 
-struct WebpackJsonpReturn {
+#[derive(Debug)]
+struct Webpack5Return {
     pub errors: std::vec::Vec<OxcDiagnostic>,
 }
 
-impl<'a> WebPackJsonp<'a> {
+impl<'a> WebPack5<'a> {
     pub fn new(allocator: &'a Allocator, source_text: &'a str) -> Self {
         let ctx = ModuleCtx::new(source_text);
 
         Self { allocator, ctx }
     }
 
-    pub fn build(self, program: &mut Program<'a>) -> WebpackJsonpReturn {
+    pub fn build(self, program: &mut Program<'a>) -> Webpack5Return {
         let (symbols, scopes) = SemanticBuilder::new("")
             .build(program)
             .semantic
@@ -179,22 +188,22 @@ impl<'a> WebPackJsonp<'a> {
         symbols: SymbolTable,
         scopes: ScopeTree,
         program: &mut Program<'a>,
-    ) -> WebpackJsonpReturn {
+    ) -> Webpack5Return {
         let mut ctx = TraverseCtx::new(scopes, symbols, self.allocator);
 
-        let mut webpack_jsonp = WebpackJsonpImpl::new(&self.ctx);
-        webpack_jsonp.build(program, &mut ctx);
-        WebpackJsonpReturn {
+        let mut webpack5 = Webpack5Impl::new(&self.ctx);
+        webpack5.build(program, &mut ctx);
+        Webpack5Return {
             errors: self.ctx.take_errors(),
         }
     }
 }
 
-struct WebpackJsonpImpl<'a, 'ctx> {
+struct Webpack5Impl<'a, 'ctx> {
     ctx: &'ctx ModuleCtx<'a>,
 }
 
-impl<'a, 'ctx> WebpackJsonpImpl<'a, 'ctx> {
+impl<'a, 'ctx> Webpack5Impl<'a, 'ctx> {
     pub fn new(ctx: &'ctx ModuleCtx<'a>) -> Self {
         Self { ctx }
     }
@@ -204,8 +213,9 @@ impl<'a, 'ctx> WebpackJsonpImpl<'a, 'ctx> {
     }
 }
 
-impl<'a> RequireR<'a> for WebpackJsonpImpl<'a, '_> {}
-impl<'a> RequireD4<'a> for WebpackJsonpImpl<'a, '_> {
+impl<'a> RequireR<'a> for Webpack5Impl<'a, '_> {}
+
+impl<'a> RequireD5<'a> for Webpack5Impl<'a, '_> {
     fn handle_export(&self, export_name: Atom<'a>, export_value: Expression<'a>) {
         self.ctx
             .module_exports
@@ -216,28 +226,8 @@ impl<'a> RequireD4<'a> for WebpackJsonpImpl<'a, '_> {
         self.ctx.error(error);
     }
 }
-impl<'a> RequireD5<'a> for WebpackJsonpImpl<'a, '_> {
-    fn handle_export(&self, export_name: Atom<'a>, export_value: Expression<'a>) {
-        self.ctx
-            .module_exports
-            .insert_export(export_name, export_value);
-    }
 
-    fn error(&self, error: OxcDiagnostic) {
-        self.ctx.error(error);
-    }
-}
-
-impl<'a> WebpackJsonpImpl<'a, '_> {
-    fn get_require_d_webpack5<'b>(&self, expr: &'b Expression<'a>, ctx: &TraverseCtx<'a>) -> bool {
-        RequireD5::get_require_d(self, expr, ctx)
-    }
-    fn get_require_d_webpack4<'b>(&self, expr: &'b Expression<'a>, ctx: &TraverseCtx<'a>) -> bool {
-        RequireD4::get_require_d(self, expr, ctx)
-    }
-}
-
-impl<'a> Traverse<'a> for WebpackJsonpImpl<'a, '_> {
+impl<'a> Traverse<'a> for Webpack5Impl<'a, '_> {
     fn exit_program(&mut self, program: &mut Program<'a>, ctx: &mut TraverseCtx<'a>) {
         program
             .body
@@ -261,14 +251,11 @@ impl<'a> Traverse<'a> for WebpackJsonpImpl<'a, '_> {
         if self.is_esm(expr, ctx) {
             self.ctx.is_esm.replace(true);
             *statement = ctx.ast.statement_empty(es_span);
-        } else if self.get_require_d_webpack5(expr, ctx) || self.get_require_d_webpack4(expr, ctx) {
+        } else if self.get_require_d(expr, ctx) {
             *statement = ctx.ast.statement_empty(es_span);
         } else if let Expression::SequenceExpression(seq) = expr {
             seq.expressions.retain(|expr| {
-                if self.is_esm(expr, ctx)
-                    || self.get_require_d_webpack5(expr, ctx)
-                    || self.get_require_d_webpack4(expr, ctx)
-                {
+                if self.is_esm(expr, ctx) || self.get_require_d(expr, ctx) {
                     return false;
                 }
                 true

@@ -58,7 +58,7 @@ impl<'a> Traverse<'a> for UnInfinity {
 
 #[cfg(test)]
 mod test {
-    use crate::unminify::passes::tests::tester;
+    use crate::passes::tests::tester;
     use oxc_allocator::Allocator;
 
     fn run_test(source_text: &str, expected: &str) {

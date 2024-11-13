@@ -1,0 +1,18 @@
+[package]
+name = "aadcr_unpacker"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+oxc_allocator = { workspace = true }
+oxc_ast = { workspace = true }
+oxc_codegen = { workspace = true }
+oxc_parser = { workspace = true }
+oxc_semantic = { workspace = true }
+oxc_span = { workspace = true }
+oxc_traverse = { workspace = true }
+oxc_diagnostics = { workspace = true }
+pico-args = { workspace = true }
+indexmap = { workspace = true }
+insta = { workspace = true }
+normpath = { workspace = true }

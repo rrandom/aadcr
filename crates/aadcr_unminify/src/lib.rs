@@ -1,3 +1,5 @@
+#![feature(let_chains)]
+#![feature(if_let_guard)]
 mod passes;
 
 use oxc_allocator::Allocator;

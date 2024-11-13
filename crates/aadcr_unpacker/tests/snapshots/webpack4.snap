@@ -1,6 +1,6 @@
 ---
-source: tests/webpack4.rs
-assertion_line: 36
+source: crates/aadcr_unpacker/tests/webpack4.rs
+assertion_line: 39
 snapshot_kind: text
 ---
 [
@@ -1223,7 +1223,6 @@ snapshot_kind: text
     };
     ` },
     Module {id: 11, is_entry: false, code: `"use strict";
-    require.r(exports);
     var r = require(21), o = {
     	INIT: "@@redux/INIT" + Math.random().toString(36).substring(7).split("").join("."),
     	REPLACE: "@@redux/REPLACE" + Math.random().toString(36).substring(7).split("").join(".")

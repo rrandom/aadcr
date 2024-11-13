@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use aadcr::unpacker::webpack::jsonp::get_modules_form_jsonp;
+use aadcr_unpacker::webpack::jsonp::get_modules_form_jsonp;
 use oxc_allocator::Allocator;
 use oxc_parser::Parser;
 use oxc_semantic::SemanticBuilder;

@@ -1,7 +1,7 @@
 #![allow(clippy::print_stdout)]
 use std::{env, path::Path};
 
-pub use aadcr::unpacker::*;
+pub use aadcr_unpacker::*;
 use oxc_allocator::Allocator;
 use oxc_parser::Parser;
 use oxc_semantic::SemanticBuilder;

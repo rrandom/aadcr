@@ -11,8 +11,8 @@ use oxc_semantic::{ScopeTree, SemanticBuilder, SymbolTable};
 use oxc_span::{Atom, GetSpan, Span};
 use oxc_traverse::{Traverse, TraverseCtx};
 
-use crate::unpacker::Module;
-use crate::unpacker::{
+use crate::{
+    Module,
     common::{fun_to_program::FunctionToProgram, ModuleCtx},
     UnpackResult, UnpackReturn,
 };

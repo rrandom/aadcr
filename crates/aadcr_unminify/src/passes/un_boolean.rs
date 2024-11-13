@@ -1,7 +1,7 @@
 use oxc_ast::ast::Expression;
 use oxc_traverse::{Traverse, TraverseCtx};
 
-use crate::unminify::UnminifyCtx;
+use crate::UnminifyCtx;
 
 use super::UnminifyPass;
 
@@ -47,7 +47,7 @@ mod test {
     use oxc_allocator::Allocator;
     use oxc_span::SourceType;
 
-    use crate::unminify::passes::tests::tester;
+    use crate::passes::tests::tester;
 
     fn run_test(source_text: &str, expected: &str) {
         let allocator = Allocator::default();

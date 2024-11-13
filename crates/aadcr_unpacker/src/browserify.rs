@@ -12,7 +12,7 @@ use oxc_diagnostics::OxcDiagnostic;
 use oxc_semantic::SemanticBuilder;
 use oxc_span::Span;
 
-use crate::unpacker::{common::fun_to_program::FunctionToProgram, Module};
+use crate::{common::fun_to_program::FunctionToProgram, Module};
 
 use super::{UnpackResult, UnpackReturn};
 
