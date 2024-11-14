@@ -67,7 +67,6 @@ mod test {
         let mut pass = super::UnInfinity::new();
         tester(
             &allocator,
-            "test_un_infinity",
             source_text,
             expected,
             &mut pass,

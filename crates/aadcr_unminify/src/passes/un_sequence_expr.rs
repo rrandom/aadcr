@@ -207,17 +207,16 @@ mod test {
     use crate::passes::tests::tester;
     use oxc_allocator::Allocator;
 
-    fn run_test(name: &str, source_text: &str, expected: &str) {
+    fn run_test(source_text: &str, expected: &str) {
         let allocator = Allocator::default();
 
         let mut pass = super::UnSequenceExpr::new();
-        tester(&allocator, name, source_text, expected, &mut pass);
+        tester(&allocator, source_text, expected, &mut pass);
     }
 
     #[test]
     fn test_un_sequence_expr_arrow_function() {
         run_test(
-            "test_un_sequence_expr_arrow_function",
             r#"
             var foo = (m => (a(), b(), c))();
             var bar = (m => (m.a = 1, m.b = 2, m.c = 3))();"#,
@@ -241,7 +240,6 @@ var bar = (m => {
     #[ignore]
     fn test_un_sequence_expr_return() {
         run_test(
-            "test_un_sequence_expr_return",
             r#"
             if(a) return b(), c();
 else return d = 1, e = 2, f = 3;
@@ -269,7 +267,6 @@ return c();
     #[test]
     fn test_un_sequence_expr_if() {
         run_test(
-            "test_un_sequence_expr_if",
             r#"if (a(), b(), c()) {
   d()
 }"#,

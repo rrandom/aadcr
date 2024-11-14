@@ -22,7 +22,6 @@ pub mod tests {
 
     pub fn tester<'a, P: UnminifyPass<'a>>(
         allocator: &'a Allocator,
-        name: &str,
         source_text: &'a str,
         expected: &'a str,
         pass: &mut P,
@@ -31,7 +30,7 @@ pub mod tests {
         let expected = run::<P>(allocator, expected, None);
         assert_eq!(
             result, expected,
-            "\n{name}\nfor source:\n{source_text}\nexpect:\n{expected}\ngot:\n{result}"
+            "\nfor source:\n{source_text}\nexpect:\n{expected}\ngot:\n{result}"
         );
     }
 

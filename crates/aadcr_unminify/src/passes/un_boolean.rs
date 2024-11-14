@@ -56,7 +56,6 @@ mod test {
         let mut pass = super::UnBoolean::new(&ctx);
         tester(
             &allocator,
-            "test_un_boolean",
             source_text,
             expected,
             &mut pass,

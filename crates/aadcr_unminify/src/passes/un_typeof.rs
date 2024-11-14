@@ -117,7 +117,6 @@ mod test {
         let mut pass = super::UnTypeof::new();
         tester(
             &allocator,
-            "test un_typeof",
             source_text,
             expected,
             &mut pass,
