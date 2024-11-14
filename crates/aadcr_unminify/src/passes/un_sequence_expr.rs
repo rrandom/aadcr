@@ -138,7 +138,7 @@ impl<'a> UnSequenceExpr {
                     }
                 }
                 Statement::IfStatement(if_stmt) => {
-                    if let Some(insertion) = self.try_un_sequence_if_test(&mut if_stmt.test, ctx) {
+                    if let Some(insertion) = self.try_un_sequence_sequce_expr(&mut if_stmt.test, ctx) {
                         let len = insertion.len();
                         statements.splice(i..i, insertion);
                         i += len;
@@ -176,12 +176,12 @@ impl<'a> UnSequenceExpr {
         None
     }
 
-    fn try_un_sequence_if_test(
+    fn try_un_sequence_sequce_expr(
         &mut self,
-        test: &mut Expression<'a>,
+        expr: &mut Expression<'a>,
         ctx: &mut TraverseCtx<'a>,
     ) -> Option<Vec<'a, Statement<'a>>> {
-        if let Expression::SequenceExpression(seq_expr) = test.without_parentheses_mut() {
+        if let Expression::SequenceExpression(seq_expr) = expr.without_parentheses_mut() {
             let exprs = &mut seq_expr.expressions;
             let mut insertion = ctx.ast.vec();
             let len = exprs.len();
@@ -194,7 +194,7 @@ impl<'a> UnSequenceExpr {
             }
             let last = exprs.last_mut().unwrap();
 
-            *test = ctx.ast.move_expression(last);
+            *expr = ctx.ast.move_expression(last);
 
             return Some(insertion);
         }
