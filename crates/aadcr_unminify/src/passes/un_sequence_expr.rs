@@ -3,7 +3,6 @@ use oxc_ast::ast::{Expression, Statement};
 use oxc_span::Span;
 use oxc_traverse::{Traverse, TraverseCtx};
 
-
 use super::UnminifyPass;
 
 /// Separate sequence expressions into multiple statements.
@@ -91,7 +90,6 @@ impl<'a> Traverse<'a> for UnSequenceExpr {
             }
         }
     }
-    
 
     fn exit_program(&mut self, node: &mut oxc_ast::ast::Program<'a>, ctx: &mut TraverseCtx<'a>) {
         self.unfuse_statements(&mut node.body, ctx);
@@ -99,14 +97,21 @@ impl<'a> Traverse<'a> for UnSequenceExpr {
 }
 
 impl<'a> UnSequenceExpr {
-    fn unfuse_statements(&mut self, statements: &mut Vec<'a, Statement<'a>>, ctx: &mut TraverseCtx<'a>) {
+    fn unfuse_statements(
+        &mut self,
+        statements: &mut Vec<'a, Statement<'a>>,
+        ctx: &mut TraverseCtx<'a>,
+    ) {
         let mut i = 0;
         while i < statements.len() {
             let mut replacement = ctx.ast.vec();
 
             match &mut statements.get_mut(i).unwrap() {
-                Statement::ReturnStatement(ret) if let Some(expr) = ret.argument.as_ref()
-                && let Expression::SequenceExpression(expr) = expr.without_parentheses() =>             {
+                Statement::ReturnStatement(ret)
+                    if let Some(expr) = ret.argument.as_ref()
+                        && let Expression::SequenceExpression(expr) =
+                            expr.without_parentheses() =>
+                {
                     let exprs = expr.expressions.clone_in(ctx.ast.allocator);
                     if let Some((last, exprs)) = exprs.split_last() {
                         for expr in exprs {
@@ -119,18 +124,25 @@ impl<'a> UnSequenceExpr {
                             Span::default(),
                             Some(last.clone_in(ctx.ast.allocator)),
                         ));
-                        statements.splice(i..i+1, replacement);
+                        statements.splice(i..i + 1, replacement);
                         i += exprs.len();
                         continue;
                     }
                 }
                 Statement::IfStatement(if_stmt) => {
-                    if let Expression::SequenceExpression(expr) = if_stmt.test.clone_in(ctx.ast.allocator).without_parentheses() {
+                    if let Expression::SequenceExpression(expr) = if_stmt
+                        .test
+                        .clone_in(ctx.ast.allocator)
+                        .without_parentheses()
+                    {
                         let exprs = expr.expressions.clone_in(ctx.ast.allocator);
                         if let Some((last, exprs)) = exprs.split_last() {
                             if_stmt.test = last.clone_in(ctx.ast.allocator);
                             for expr in exprs {
-                                replacement.push(ctx.ast.statement_expression(Span::default(), expr.clone_in(ctx.ast.allocator)));
+                                replacement.push(ctx.ast.statement_expression(
+                                    Span::default(),
+                                    expr.clone_in(ctx.ast.allocator),
+                                ));
                             }
                             statements.splice(i..i, replacement);
                             i += exprs.len();
