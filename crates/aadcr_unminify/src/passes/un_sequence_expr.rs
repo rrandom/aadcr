@@ -130,6 +130,15 @@ impl<'a> UnSequenceExpr {
             let statement = statements.get_mut(i).unwrap();
 
             match statement {
+                Statement::ExpressionStatement(expr) => {
+                    if let Some(insertion) =
+                        self.try_un_sequence_sequce_expr(&mut expr.expression, ctx)
+                    {
+                        let len = insertion.len();
+                        statements.splice(i..i, insertion);
+                        i += len;
+                    }
+                }
                 Statement::ReturnStatement(ret) => {
                     if let Some(insertion) = self.try_un_sequence_return(ret, ctx) {
                         let len = insertion.len();
@@ -138,7 +147,9 @@ impl<'a> UnSequenceExpr {
                     }
                 }
                 Statement::IfStatement(if_stmt) => {
-                    if let Some(insertion) = self.try_un_sequence_sequce_expr(&mut if_stmt.test, ctx) {
+                    if let Some(insertion) =
+                        self.try_un_sequence_sequce_expr(&mut if_stmt.test, ctx)
+                    {
                         let len = insertion.len();
                         statements.splice(i..i, insertion);
                         i += len;
@@ -212,6 +223,16 @@ mod test {
 
         let mut pass = super::UnSequenceExpr::new();
         tester(&allocator, source_text, expected, &mut pass);
+    }
+
+    #[test]
+    fn test_un_sequence_sequence_expr() {
+        run_test(
+            r#"a(), b(), c()"#,
+            r#"a();
+b();
+c();"#,
+        );
     }
 
     #[test]
