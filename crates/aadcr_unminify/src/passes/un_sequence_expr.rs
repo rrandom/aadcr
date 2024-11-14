@@ -127,9 +127,9 @@ impl<'a> UnSequenceExpr {
     ) {
         let mut i = 0;
         while i < statements.len() {
-            let statement = statements.get_mut(i).unwrap();
+            let current = statements.get_mut(i).unwrap();
 
-            match statement {
+            match current {
                 Statement::ExpressionStatement(expr) => {
                     if let Some(insertion) =
                         self.try_un_sequence_sequce_expr(&mut expr.expression, ctx)
@@ -147,9 +147,15 @@ impl<'a> UnSequenceExpr {
                     }
                 }
                 Statement::IfStatement(if_stmt) => {
-                    if let Some(insertion) =
-                        self.try_un_sequence_sequce_expr(&mut if_stmt.test, ctx)
-                    {
+                    let test_insertion = self.try_un_sequence_sequce_expr(&mut if_stmt.test, ctx);
+
+                    self.unsequence_statement(&mut if_stmt.consequent, ctx);
+
+                    if_stmt.alternate.as_mut().map(|alt_stmt| {
+                        self.unsequence_statement(alt_stmt, ctx);
+                    });
+
+                    if let Some(insertion) = test_insertion {
                         let len = insertion.len();
                         statements.splice(i..i, insertion);
                         i += len;
@@ -158,6 +164,25 @@ impl<'a> UnSequenceExpr {
                 _ => {}
             }
             i += 1;
+        }
+    }
+
+    fn unsequence_statement(&mut self, statement: &mut Statement<'a>, ctx: &mut TraverseCtx<'a>) {
+        match statement {
+            Statement::ExpressionStatement(expr) => {
+                let expression = &mut expr.expression;
+                if let Some(mut insertion) = self.try_un_sequence_sequce_expr(expression, ctx) {
+                    insertion.push(
+                        ctx.ast
+                            .statement_expression(SPAN, ctx.ast.move_expression(expression)),
+                    );
+                    *statement = ctx.ast.statement_block(SPAN, insertion);
+                }
+            }
+            Statement::BlockStatement(block) => {
+                self.unsequence_statements(&mut block.body, ctx);
+            }
+            _ => {}
         }
     }
 
@@ -229,7 +254,8 @@ mod test {
     fn test_un_sequence_sequence_expr() {
         run_test(
             r#"a(), b(), c()"#,
-            r#"a();
+            r#"
+a();
 b();
 c();"#,
         );
@@ -239,8 +265,8 @@ c();"#,
     fn test_un_sequence_expr_arrow_function() {
         run_test(
             r#"
-            var foo = (m => (a(), b(), c))();
-            var bar = (m => (m.a = 1, m.b = 2, m.c = 3))();"#,
+var foo = (m => (a(), b(), c))();
+var bar = (m => (m.a = 1, m.b = 2, m.c = 3))();"#,
             r#"
 var foo = (m => {
   a();
@@ -262,13 +288,13 @@ var bar = (m => {
     fn test_un_sequence_expr_return() {
         run_test(
             r#"
-            if(a) return b(), c();
+if(a) return b(), c();
 else return d = 1, e = 2, f = 3;
 
 return a(), b(), c()
 "#,
             r#"
-            if (a) {
+if (a) {
   b();
   return c();
 } else {
@@ -286,16 +312,49 @@ return c();
     }
 
     #[test]
-    fn test_un_sequence_expr_if() {
+    fn test_un_sequence_expr_if_test() {
         run_test(
-            r#"if (a(), b(), c()) {
+            r#"
+if (a(), b(), c()) {
   d()
 }"#,
-            r#"a();
+            r#"
+a();
 b();
 
 if (c()) {
   d();
+}
+"#,
+        );
+    }
+
+    #[test]
+    fn test_un_sequence_expr_if_consequent() {
+        run_test(
+            r#"
+if (condition) a(), b();
+else c(), d();
+
+if (a(), b(), c()) {
+  d(), e()
+}
+"#,
+            r#"
+if (condition) {
+  a();
+  b();
+} else {
+  c();
+  d();
+}
+
+a();
+b();
+
+if (c()) {
+  d();
+  e();
 }
 "#,
         );
