@@ -6,6 +6,7 @@ pub mod un_numeric_literal;
 pub mod un_sequence_expr;
 pub mod un_typeof;
 pub mod un_undefined;
+pub mod un_variable_merging;
 pub trait UnminifyPass<'a>: Traverse<'a> {
     fn changed(&self) -> bool;
 }
