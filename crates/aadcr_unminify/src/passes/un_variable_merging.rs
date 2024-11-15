@@ -1,7 +1,6 @@
 use super::UnminifyPass;
 use oxc_allocator::{CloneIn, Vec};
-use oxc_ast::ast::{Declaration, VariableDeclaration};
-use oxc_ast::ast::{Expression, ReturnStatement, Statement};
+use oxc_ast::ast::{Declaration, Statement, VariableDeclaration};
 use oxc_span::SPAN;
 use oxc_traverse::{Traverse, TraverseCtx};
 
@@ -64,7 +63,7 @@ impl<'a> UnVariableMerging {
     ) -> Option<Vec<'a, Declaration<'a>>> {
         let declarations = &mut declaration.declarations;
         let mut rest = declarations.split_off(1);
-        if rest.len() > 0 {
+        if !rest.is_empty() {
             let mut new_declarations = ctx.ast.vec();
             for declarator in rest.iter_mut() {
                 let del = ctx.ast.declaration_variable(
@@ -82,65 +81,64 @@ impl<'a> UnVariableMerging {
     }
 
     fn un_merging_in_statements(
-      &mut self,
-      statements: &mut Vec<Statement<'a>>,
-      ctx: &mut TraverseCtx<'a>,
-  ) {
-      let mut i = 0;
-      while i < statements.len() {
-          let result = {
-              let current = statements.get_mut(i).unwrap();
-              match current {
-                  Statement::VariableDeclaration(decl) => {
-                      if let Some(new_decls) = self.split_declaration(decl, ctx) {
-                          let new_stmts = new_decls
-                              .into_iter()
-                              .map(|declaration| ctx.ast.statement_declaration(declaration));
+        &mut self,
+        statements: &mut Vec<Statement<'a>>,
+        ctx: &mut TraverseCtx<'a>,
+    ) {
+        let mut i = 0;
+        while i < statements.len() {
+            let result = {
+                let current = statements.get_mut(i).unwrap();
+                match current {
+                    Statement::VariableDeclaration(decl) => {
+                        if let Some(new_decls) = self.split_declaration(decl, ctx) {
+                            let new_stmts = new_decls
+                                .into_iter()
+                                .map(|declaration| ctx.ast.statement_declaration(declaration));
 
-                          Some(ctx.ast.vec_from_iter(new_stmts))
-                      } else {
-                          None
-                      }
-                  }
-                  Statement::ExportNamedDeclaration(export_decl) => {
-                      if let Some(Declaration::VariableDeclaration(declaration)) =
-                          export_decl.declaration.as_mut()
-                      {
-                          if let Some(new_decls) = self.split_declaration(declaration, ctx) {
-                              let new_stmts = new_decls.into_iter().map(|declaration| {
-                                  let del = ctx.ast.module_declaration_export_named_declaration(
-                                      SPAN,
-                                      Some(declaration),
-                                      export_decl.specifiers.clone_in(ctx.ast.allocator),
-                                      export_decl.source.clone_in(ctx.ast.allocator),
-                                      export_decl.export_kind,
-                                      export_decl.with_clause.clone_in(ctx.ast.allocator),
-                                  );
-                                  ctx.ast.statement_module_declaration(del)
-                              });
-                              Some(ctx.ast.vec_from_iter(new_stmts))
-                          } else {
-                              None
-                          }
-                      } else {
-                          None
-                      }
-                  }
-                  _ => None,
-              }
-          };
-  
-          // 在借用结束后进行 `splice` 操作
-          if let Some(new_stmts) = result {
-              let len = new_stmts.len();
-              statements.splice(i + 1..i + 1, new_stmts);
-              i += len;
-          }
-  
-          i += 1;
-      }
-  }
-  
+                            Some(ctx.ast.vec_from_iter(new_stmts))
+                        } else {
+                            None
+                        }
+                    }
+                    Statement::ExportNamedDeclaration(export_decl) => {
+                        if let Some(Declaration::VariableDeclaration(declaration)) =
+                            export_decl.declaration.as_mut()
+                        {
+                            if let Some(new_decls) = self.split_declaration(declaration, ctx) {
+                                let new_stmts = new_decls.into_iter().map(|declaration| {
+                                    let del = ctx.ast.module_declaration_export_named_declaration(
+                                        SPAN,
+                                        Some(declaration),
+                                        export_decl.specifiers.clone_in(ctx.ast.allocator),
+                                        export_decl.source.clone_in(ctx.ast.allocator),
+                                        export_decl.export_kind,
+                                        export_decl.with_clause.clone_in(ctx.ast.allocator),
+                                    );
+                                    ctx.ast.statement_module_declaration(del)
+                                });
+                                Some(ctx.ast.vec_from_iter(new_stmts))
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
+                    }
+                    _ => None,
+                }
+            };
+
+            // 在借用结束后进行 `splice` 操作
+            if let Some(new_stmts) = result {
+                let len = new_stmts.len();
+                statements.splice(i + 1..i + 1, new_stmts);
+                i += len;
+            }
+
+            i += 1;
+        }
+    }
 }
 
 #[cfg(test)]

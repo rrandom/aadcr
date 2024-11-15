@@ -65,12 +65,7 @@ mod test {
         let allocator = Allocator::default();
 
         let mut pass = super::UnInfinity::new();
-        tester(
-            &allocator,
-            source_text,
-            expected,
-            &mut pass,
-        );
+        tester(&allocator, source_text, expected, &mut pass);
     }
 
     #[test]

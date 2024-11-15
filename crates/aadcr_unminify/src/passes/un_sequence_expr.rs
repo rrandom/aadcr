@@ -151,9 +151,9 @@ impl<'a> UnSequenceExpr {
 
                     self.unsequence_statement(&mut if_stmt.consequent, ctx);
 
-                    if_stmt.alternate.as_mut().map(|alt_stmt| {
+                    if let Some(alt_stmt) = if_stmt.alternate.as_mut() {
                         self.unsequence_statement(alt_stmt, ctx);
-                    });
+                    }
 
                     if let Some(insertion) = test_insertion {
                         let len = insertion.len();
