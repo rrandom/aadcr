@@ -7,6 +7,8 @@ pub mod un_sequence_expr;
 pub mod un_typeof;
 pub mod un_undefined;
 pub mod un_variable_merging;
+pub mod un_while_loop;
+
 pub trait UnminifyPass<'a>: Traverse<'a> {
     fn changed(&self) -> bool;
 }
