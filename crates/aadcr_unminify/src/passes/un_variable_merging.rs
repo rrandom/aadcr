@@ -4,6 +4,7 @@ use oxc_ast::ast::{Declaration, Statement, VariableDeclaration};
 use oxc_span::SPAN;
 use oxc_traverse::{Traverse, TraverseCtx};
 
+// TO-DO: variable merging in for statement
 pub struct UnVariableMerging {
     changed: bool,
 }
