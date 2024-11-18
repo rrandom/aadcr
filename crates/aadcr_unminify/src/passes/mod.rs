@@ -9,6 +9,7 @@ pub mod un_undefined;
 pub mod un_variable_merging;
 pub mod un_while_loop;
 pub mod un_flip_comparisons;
+pub mod un_return;
 
 pub trait UnminifyPass<'a>: Traverse<'a> {
     fn changed(&self) -> bool;
