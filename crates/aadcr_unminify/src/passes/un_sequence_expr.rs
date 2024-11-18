@@ -1,5 +1,5 @@
 use oxc_allocator::{CloneIn, Vec};
-use oxc_ast::ast::{AssignmentTarget, Expression, Statement};
+use oxc_ast::ast::{AssignmentTarget, Expression, ForStatementInit, Statement};
 use oxc_span::SPAN;
 use oxc_traverse::{Traverse, TraverseCtx};
 
@@ -66,20 +66,6 @@ impl<'a> Traverse<'a> for UnSequenceExpr {
         }
     }
 
-    fn enter_variable_declaration(
-        &mut self,
-        node: &mut oxc_ast::ast::VariableDeclaration<'a>,
-        ctx: &mut TraverseCtx<'a>,
-    ) {
-        // for decl in node.declarations.iter_mut() {
-        //     if let Some(init) = &mut decl.init {
-        //         if let Some(mut insertion) = self.try_un_seq_seq_expr(init, ctx) {
-        //             let len = insertion.len();
-        //         }
-        //     }
-        // }
-    }
-
     fn exit_statements(&mut self, stmts: &mut Vec<'a, Statement<'a>>, ctx: &mut TraverseCtx<'a>) {
         let mut i = 0;
         while i < stmts.len() {
@@ -88,6 +74,12 @@ impl<'a> Traverse<'a> for UnSequenceExpr {
             match current {
                 Statement::ExpressionStatement(expr) => {
                     if let Some(insertion) = self.try_un_seq_seq_expr(&mut expr.expression, ctx) {
+                        let len = insertion.len();
+                        stmts.splice(i..i, insertion);
+                        i += len;
+                    } else if let Some(insertion) =
+                        self.try_un_seq_member_expr_in_assign(&mut expr.expression, ctx)
+                    {
                         let len = insertion.len();
                         stmts.splice(i..i, insertion);
                         i += len;
@@ -125,18 +117,62 @@ impl<'a> Traverse<'a> for UnSequenceExpr {
                     }
                 }
                 Statement::VariableDeclaration(var_decl) => {
-                    let mut insertion = ctx.ast.vec();
-                    let mut length = 0;
-                    for decl in var_decl.declarations.iter_mut() {
-                        if let Some(init) = &mut decl.init
-                            && let Some(insert) = self.try_un_seq_seq_expr(init, ctx)
-                        {
-                            length += insert.len();
-                            insertion.extend(insert);
+                    let insertion = self.try_un_seq_var_declaration(var_decl, ctx);
+                    if let Some(insertion) = insertion {
+                        let len = insertion.len();
+                        stmts.splice(i..i, insertion);
+                        i += len;
+                    }
+                }
+                Statement::ForStatement(for_loop) => {
+                    if let Some(init) = &mut for_loop.init {
+                        match init {
+                            ForStatementInit::VariableDeclaration(var_decl) => {
+                                let insertion = self.try_un_seq_var_declaration(var_decl, ctx);
+                                if let Some(insertion) = insertion {
+                                    let len = insertion.len();
+                                    stmts.splice(i..i, insertion);
+                                    i += len;
+                                }
+                            }
+                            _ => {
+                                let init_expr = init.to_expression_mut();
+                                if let Some(mut insertion) =
+                                    self.try_un_seq_seq_expr(init_expr, ctx)
+                                {
+                                    match init_expr {
+                                        Expression::AssignmentExpression(_) => {}
+                                        _ => {
+                                            let last = ctx.ast.move_expression(init_expr);
+                                            for_loop.init = None;
+                                            insertion
+                                                .push(ctx.ast.statement_expression(SPAN, last));
+                                        }
+                                    }
+                                    let len = insertion.len();
+                                    stmts.splice(i..i, insertion);
+                                    i += len;
+                                }
+                            }
                         }
                     }
-                    stmts.splice(i..i, insertion);
-                    i += length;
+                }
+                Statement::ForInStatement(for_in_stmt) => {
+                    let right = &mut for_in_stmt.right;
+                    if let Some(insertion) = self.try_un_seq_seq_expr(right, ctx) {
+                        let len = insertion.len();
+                        stmts.splice(i..i, insertion);
+                        i += len;
+                    }
+                }
+                Statement::ForOfStatement(for_of_stmt) => {
+                    dbg!(&for_of_stmt.right);
+                    let right = &mut for_of_stmt.right;
+                    if let Some(insertion) = self.try_un_seq_seq_expr(right, ctx) {
+                        let len = insertion.len();
+                        stmts.splice(i..i, insertion);
+                        i += len;
+                    }
                 }
                 _ => {}
             }
@@ -233,6 +269,59 @@ impl<'a> UnSequenceExpr {
             },
             _ => None,
         }
+    }
+
+    fn try_un_seq_var_declaration(
+        &mut self,
+        var_decl: &mut oxc_ast::ast::VariableDeclaration<'a>,
+        ctx: &mut TraverseCtx<'a>,
+    ) -> Option<Vec<'a, Statement<'a>>> {
+        let mut insertion = ctx.ast.vec();
+        for decl in var_decl.declarations.iter_mut() {
+            if let Some(init) = &mut decl.init
+                && let Some(insert) = self.try_un_seq_seq_expr(init, ctx)
+            {
+                insertion.extend(insert);
+            }
+        }
+        Some(insertion)
+    }
+
+    // (a = b())['c'] = d -> a = b(); a['c'] = d
+    fn try_un_seq_member_expr_in_assign(
+        &mut self,
+        expr: &mut Expression<'a>,
+        ctx: &mut TraverseCtx<'a>,
+    ) -> Option<Vec<'a, Statement<'a>>> {
+        let mut insertion = ctx.ast.vec();
+        if let Expression::AssignmentExpression(assign) = expr.without_parentheses_mut() {
+            let mut left_obj = match &mut assign.left {
+                AssignmentTarget::StaticMemberExpression(left) => {
+                    left.object.without_parentheses_mut()
+                }
+                AssignmentTarget::ComputedMemberExpression(left) => {
+                    left.object.without_parentheses_mut()
+                }
+                _ => {
+                    return None;
+                }
+            };
+
+            if let Expression::AssignmentExpression(inner_assign) = &mut left_obj {
+                if let AssignmentTarget::AssignmentTargetIdentifier(ident) = &mut inner_assign.left
+                {
+                    let name = ident.name.clone_in(ctx.ast.allocator);
+
+                    insertion.push(
+                        ctx.ast
+                            .statement_expression(SPAN, ctx.ast.move_expression(left_obj)),
+                    );
+                    *left_obj = ctx.ast.expression_identifier_reference(SPAN, name);
+                    return Some(insertion);
+                }
+            }
+        }
+        None
     }
 }
 
@@ -485,6 +574,125 @@ const x = (a(), b()), y = 1, z = (c(), d())
             "
 a(); c(); const x = b(), y = 1, z = d()
             ",
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn test_un_sequence_expr_var_declaration_with_export() {
+        run_test(
+            "export const x = (a(), b(), c())",
+            "a(); b(); export const x = c();",
+        );
+    }
+
+    #[test]
+    fn test_un_sequence_expr_for_init() {
+        run_test(
+            "
+for (a(), b(); c(); d(), e()) {
+  f(), g()
+}
+            ",
+            "
+a();
+b();
+
+for (; c(); d(), e()) {
+  f();
+  g();
+}
+            ",
+        );
+    }
+
+    #[test]
+    fn test_un_sequence_expr_for_init_var_declaration() {
+        run_test(
+            "
+for (let x = (a(), b(), c()), y = 1; x < 10; x++) {
+  d(), e()
+}
+        ",
+            "
+a();
+b();
+
+for (let x = c(), y = 1; x < 10; x++) {
+  d();
+  e();
+}
+        ",
+        );
+    }
+
+    #[test]
+    fn test_un_sequence_expr_for_in_init() {
+        run_test(
+            r#"
+var o = [];
+for (var x in o.push("PASS"), o) {
+  console.log(o[x]);
+}
+
+for (let x in (a(), b(), c())) {
+  console.log(x);
+}
+        "#,
+            r#"
+var o = [];
+o.push("PASS");
+
+for (var x in o) {
+  console.log(o[x]);
+}
+
+a();
+b();
+
+for (let x in c()) {
+  console.log(x);
+}
+        "#,
+        );
+    }
+
+    #[test]
+    fn test_un_sequence_expr_for_of_init() {
+        run_test(
+            r#"
+for (let x of (a(), b(), c())) {
+    console.log(x);
+}
+        "#,
+            r#"
+a();
+b();
+
+for (let x of c()) {
+    console.log(x);
+}
+            "#,
+        );
+    }
+
+    #[test]
+    fn test_un_sequence_member_expr_in_assignment() {
+        run_test(
+            r#"
+(a = b())['c'] = d;
+// comment
+(a = v).b = c;
+        "#,
+            r#"
+a = b();
+a['c'] = d;
+
+// comment
+a = v;
+
+a.b = c;
+        "#,
         );
     }
 }
