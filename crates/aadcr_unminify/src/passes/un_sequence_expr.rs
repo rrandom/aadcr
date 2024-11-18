@@ -66,6 +66,20 @@ impl<'a> Traverse<'a> for UnSequenceExpr {
         }
     }
 
+    fn enter_variable_declaration(
+        &mut self,
+        node: &mut oxc_ast::ast::VariableDeclaration<'a>,
+        ctx: &mut TraverseCtx<'a>,
+    ) {
+        // for decl in node.declarations.iter_mut() {
+        //     if let Some(init) = &mut decl.init {
+        //         if let Some(mut insertion) = self.try_un_seq_seq_expr(init, ctx) {
+        //             let len = insertion.len();
+        //         }
+        //     }
+        // }
+    }
+
     fn exit_statements(&mut self, stmts: &mut Vec<'a, Statement<'a>>, ctx: &mut TraverseCtx<'a>) {
         let mut i = 0;
         while i < stmts.len() {
@@ -109,6 +123,20 @@ impl<'a> Traverse<'a> for UnSequenceExpr {
                         stmts.splice(i..i, insertion);
                         i += len;
                     }
+                }
+                Statement::VariableDeclaration(var_decl) => {
+                    let mut insertion = ctx.ast.vec();
+                    let mut length = 0;
+                    for decl in var_decl.declarations.iter_mut() {
+                        if let Some(init) = &mut decl.init
+                            && let Some(insert) = self.try_un_seq_seq_expr(init, ctx)
+                        {
+                            length += insert.len();
+                            insertion.extend(insert);
+                        }
+                    }
+                    stmts.splice(i..i, insertion);
+                    i += length;
                 }
                 _ => {}
             }
@@ -435,5 +463,28 @@ if(e !== null) throw a(), e
 }
 ",
         )
+    }
+
+    #[test]
+    fn test_un_sequence_expr_var_declaration() {
+        run_test(
+            "
+const x = (a(), b(), c())
+            ",
+            "
+a();
+b();
+const x = c();
+            ",
+        );
+
+        run_test(
+            "
+const x = (a(), b()), y = 1, z = (c(), d())
+            ",
+            "
+a(); c(); const x = b(), y = 1, z = d()
+            ",
+        );
     }
 }
