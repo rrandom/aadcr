@@ -106,7 +106,7 @@ impl<'a> Traverse<'a> for FunctionToProgram<'a> {
     }
 
     fn exit_program(&mut self, program: &mut Program<'a>, ctx: &mut TraverseCtx<'a>) {
-        let Some(Statement::ExpressionStatement(exp)) = program.body.get_mut(0) else {
+        let Some(Statement::ExpressionStatement(exp)) = program.body.first_mut() else {
             return;
         };
         let Some(body) = get_fun_body_mut(&mut exp.expression) else {
