@@ -16,3 +16,11 @@ pico-args = { workspace = true }
 indexmap = { workspace = true }
 insta = { workspace = true }
 normpath = { workspace = true }
+
+
+[dev-dependencies]
+criterion = "0.5"
+
+[[bench]]
+name = "unpacker_benchmark"
+harness = false
