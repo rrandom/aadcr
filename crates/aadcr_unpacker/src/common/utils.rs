@@ -21,6 +21,21 @@ pub fn get_fun_body<'a, 'b>(
     }
 }
 
+pub fn get_fun_body_mut<'a, 'b>(
+    expression: &'b mut Expression<'a>,
+) -> Option<&'b mut FunctionBody<'a>> {
+    match expression {
+        Expression::FunctionExpression(fun) => {
+            if let Some(body) = &mut fun.body {
+                return Some(body);
+            }
+            None
+        }
+        Expression::ArrowFunctionExpression(fun) => Some(fun.body.as_mut()),
+        _ => None,
+    }
+}
+
 /// a iife is :
 /// !function() { ... }()
 /// !() => { ... }()

@@ -1,12 +1,12 @@
 use std::cell::RefCell;
 
-use oxc_allocator::{Allocator, CloneIn};
+use oxc_allocator::{Allocator};
 use oxc_ast::ast::{BindingPatternKind, IdentifierReference, Program, Statement};
 use oxc_semantic::{ScopeTree, SemanticBuilder, SymbolId, SymbolTable};
 use oxc_span::Atom;
 use oxc_traverse::{Traverse, TraverseCtx};
 
-use super::utils::{get_fun_body, get_fun_params};
+use super::utils::{get_fun_body_mut, get_fun_params};
 
 pub struct FunctionToProgram<'a> {
     allocator: &'a Allocator,
@@ -105,16 +105,16 @@ impl<'a> Traverse<'a> for FunctionToProgram<'a> {
         }
     }
 
-    fn exit_program(&mut self, program: &mut Program<'a>, _ctx: &mut TraverseCtx<'a>) {
-        let Statement::ExpressionStatement(exp) = &program.body[0] else {
+    fn exit_program(&mut self, program: &mut Program<'a>, ctx: &mut TraverseCtx<'a>) {
+        let Some(Statement::ExpressionStatement(exp)) = program.body.get_mut(0) else {
             return;
         };
-        let Some(body) = get_fun_body(&exp.expression) else {
+        let Some(body) = get_fun_body_mut(&mut exp.expression) else {
             return;
         };
         program
             .directives
-            .extend(body.directives.clone_in(self.allocator));
-        program.body = body.statements.clone_in(self.allocator);
+            .extend(ctx.ast.move_vec(&mut body.directives));
+        program.body = ctx.ast.move_vec(&mut body.statements);
     }
 }
