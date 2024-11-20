@@ -1,9 +1,6 @@
-use oxc_ast::ast::{
-    BinaryExpression, BinaryOperator, Expression, NumberBase, TSTypeParameterInstantiation,
-    UnaryOperator,
-};
+use oxc_ast::ast::{BinaryOperator, Expression, NumberBase, UnaryOperator};
 use oxc_span::SPAN;
-use oxc_traverse::{Ancestor, Traverse, TraverseCtx};
+use oxc_traverse::{Traverse, TraverseCtx};
 
 use super::UnminifyPass;
 
@@ -32,26 +29,19 @@ impl UnminifyPass<'_> for UnTypeConstructor {
 
 impl<'a> Traverse<'a> for UnTypeConstructor {
     fn enter_expression(&mut self, node: &mut Expression<'a>, ctx: &mut TraverseCtx<'a>) {
-        match node {
-            Expression::UnaryExpression(unary) => {
-                if let Some(call) = self.try_un_unary_plus(unary, ctx) {
-                    self.changed = true;
-                    *node = call
-                }
-            }
-            Expression::BinaryExpression(binary) => {
-                if let Some(call) = self.try_un_binary_plus(binary, ctx) {
-                    self.changed = true;
-                    *node = call
-                }
-            }
-            Expression::ArrayExpression(arr) => {
-                if let Some(call) = self.try_un_arr(arr, ctx) {
-                    self.changed = true;
-                    *node = call
-                }
-            }
-            _ => {}
+        let new_expr = match node {
+            Expression::UnaryExpression(unary) => self.try_un_unary_plus(unary, ctx),
+
+            Expression::BinaryExpression(binary) => self.try_un_binary_plus(binary, ctx),
+
+            Expression::ArrayExpression(arr) => self.try_un_arr(arr, ctx),
+
+            _ => None,
+        };
+
+        if let Some(new_node) = new_expr {
+            self.changed = true;
+            *node = new_node;
         }
     }
 }
@@ -62,24 +52,15 @@ impl<'a> UnTypeConstructor {
         node: &mut oxc_ast::ast::UnaryExpression<'a>,
         ctx: &mut TraverseCtx<'a>,
     ) -> Option<Expression<'a>> {
-        use oxc_allocator::Box;
-
-        if let Expression::Identifier(_) = &mut node.argument
-            && node.operator == UnaryOperator::UnaryPlus
-        {
-            let value = ctx.ast.move_expression(&mut node.argument);
-            let value = ctx.ast.argument_expression(value);
-
-            let call = ctx.ast.expression_call(
-                node.span,
-                ctx.ast.expression_identifier_reference(SPAN, "Number"),
-                None::<Box<_>>,
-                ctx.ast.vec1(value),
-                false,
-            );
-            return Some(call);
+        if node.operator != UnaryOperator::UnaryPlus {
+            return None;
         }
-        None
+
+        if !matches!(&node.argument, Expression::Identifier(_)) {
+            return None;
+        }
+
+        Some(create_number_call(node, ctx))
     }
 
     fn try_un_binary_plus(
@@ -87,30 +68,25 @@ impl<'a> UnTypeConstructor {
         node: &mut oxc_ast::ast::BinaryExpression<'a>,
         ctx: &mut TraverseCtx<'a>,
     ) -> Option<Expression<'a>> {
-        use oxc_allocator::Box;
-
-        if node.operator == BinaryOperator::Addition
-            && let Expression::StringLiteral(lit) = &node.right
-            && lit.value == ""
-        {
-            let value = ctx.ast.move_expression(&mut node.left);
-
-            if value.is_string_literal() {
-                return Some(value);
-            }
-
-            let value = ctx.ast.argument_expression(value);
-
-            let call = ctx.ast.expression_call(
-                node.span,
-                ctx.ast.expression_identifier_reference(SPAN, "String"),
-                None::<Box<_>>,
-                ctx.ast.vec1(value),
-                false,
-            );
-            return Some(call);
+        if node.operator != BinaryOperator::Addition {
+            return None;
         }
-        None
+
+        let is_empty_string = matches!(
+            &node.right,
+            Expression::StringLiteral(lit) if lit.value.is_empty()
+        );
+        if !is_empty_string {
+            return None;
+        }
+
+        let value = ctx.ast.move_expression(&mut node.left);
+
+        if value.is_string_literal() {
+            return Some(value);
+        }
+
+        Some(create_string_constructor_call(value, ctx))
     }
 
     fn try_un_arr(
@@ -118,33 +94,77 @@ impl<'a> UnTypeConstructor {
         node: &mut oxc_ast::ast::ArrayExpression<'a>,
         ctx: &mut TraverseCtx<'a>,
     ) -> Option<Expression<'a>> {
-        use oxc_allocator::Box;
-
         let elements = &mut node.elements;
 
-        dbg!(&elements);
-
-        let length = elements.len();
-        if length > 0 && elements.iter().all(|ele| ele.is_elision()) {
-            let length = ctx.ast.expression_numeric_literal(
-                SPAN,
-                length as f64,
-                format!("{length}"),
-                NumberBase::Decimal,
-            );
-
-            let value = ctx.ast.argument_expression(length);
-            let call = ctx.ast.expression_call(
-                node.span,
-                ctx.ast.expression_identifier_reference(SPAN, "Array"),
-                None::<Box<_>>,
-                ctx.ast.vec1(value),
-                false,
-            );
-            return Some(call);
+        if elements.is_empty() {
+            return None;
         }
-        None
+
+        if !elements.iter().all(|ele| ele.is_elision()) {
+            return None;
+        }
+
+        Some(create_array_constructor_call(elements.len(), ctx))
     }
+}
+
+#[inline]
+fn create_number_call<'a>(
+    node: &mut oxc_ast::ast::UnaryExpression<'a>,
+    ctx: &mut TraverseCtx<'a>,
+) -> Expression<'a> {
+    use oxc_allocator::Box;
+
+    let value = ctx.ast.move_expression(&mut node.argument);
+    let arg = ctx.ast.argument_expression(value);
+
+    ctx.ast.expression_call(
+        SPAN,
+        ctx.ast.expression_identifier_reference(SPAN, "Number"),
+        None::<Box<_>>,
+        ctx.ast.vec1(arg),
+        false,
+    )
+}
+
+#[inline]
+fn create_string_constructor_call<'a>(
+    value: Expression<'a>,
+    ctx: &mut TraverseCtx<'a>,
+) -> Expression<'a> {
+    use oxc_allocator::Box;
+
+    let arg = ctx.ast.argument_expression(value);
+
+    ctx.ast.expression_call(
+        SPAN,
+        ctx.ast.expression_identifier_reference(SPAN, "String"),
+        None::<Box<_>>,
+        ctx.ast.vec1(arg),
+        false,
+    )
+}
+
+#[inline]
+fn create_array_constructor_call<'a>(length: usize, ctx: &mut TraverseCtx<'a>) -> Expression<'a> {
+    use oxc_allocator::Box;
+
+    let length_literal = ctx.ast.expression_numeric_literal(
+        SPAN,
+        length as f64,
+        length.to_string(),
+        NumberBase::Decimal,
+    );
+
+    let arg = ctx.ast.argument_expression(length_literal);
+
+    ctx.ast.expression_call(
+        SPAN,
+        ctx.ast.expression_identifier_reference(SPAN, "Array"),
+        None::<Box<_>>,
+        ctx.ast.vec1(arg),
+        false,
+    )
 }
 
 #[cfg(test)]

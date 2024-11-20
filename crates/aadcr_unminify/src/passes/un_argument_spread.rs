@@ -1,12 +1,9 @@
-use std::any::Any;
 
 use oxc_ast::ast::{
-    Argument, BinaryExpression, BinaryOperator, Expression, IdentifierName, IdentifierReference,
-    NumberBase, TSTypeParameterInstantiation, UnaryOperator,
+    Argument, Expression, IdentifierReference,
 };
-use oxc_codegen::{Context, GenExpr};
 use oxc_span::SPAN;
-use oxc_traverse::{Ancestor, Traverse, TraverseCtx};
+use oxc_traverse::{Traverse, TraverseCtx};
 
 use super::UnminifyPass;
 
