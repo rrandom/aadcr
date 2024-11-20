@@ -38,7 +38,7 @@ fn benchmark_webpack5(c: &mut Criterion) {
     let allocator = Allocator::default();
     let source_type = SourceType::from_path(path).unwrap();
     
-    c.bench_function("browserify_unpacker", |b| {
+    c.bench_function("webpack5_unpacker", |b| {
         b.iter(|| {
             let ret = Parser::new(&allocator, black_box(&source_text), source_type).parse();
         
