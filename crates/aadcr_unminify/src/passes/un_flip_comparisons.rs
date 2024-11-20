@@ -1,11 +1,4 @@
-use std::fmt::Binary;
-
-use oxc_allocator::{CloneIn, Vec};
-use oxc_ast::ast::{
-    AssignmentTarget, BinaryExpression, BinaryOperator, Expression, ForStatementInit, Statement,
-    UnaryOperator,
-};
-use oxc_span::{Atom, SPAN};
+use oxc_ast::ast::{BinaryExpression, BinaryOperator, Expression};
 use oxc_traverse::{Traverse, TraverseCtx};
 
 use super::UnminifyPass;

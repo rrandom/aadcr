@@ -25,17 +25,14 @@ impl<'a> Traverse<'a> for UnAssignMerging {
         let mut i = 0;
         while i < stmts.len() {
             let current = stmts.get_mut(i).unwrap();
-            match current {
-                Statement::ExpressionStatement(expr_stmt) => {
-                    let insertion = self
-                        .try_un_merging_in_assignment_expression(&mut expr_stmt.expression, ctx);
-                    if let Some(insertion) = insertion {
-                        let len = insertion.len();
-                        stmts.splice(i + 1..i + 1, insertion);
-                        i += len;
-                    }
+            if let Statement::ExpressionStatement(expr_stmt) = current {
+                let insertion =
+                    self.try_un_merging_in_assignment_expression(&mut expr_stmt.expression, ctx);
+                if let Some(insertion) = insertion {
+                    let len = insertion.len();
+                    stmts.splice(i + 1..i + 1, insertion);
+                    i += len;
                 }
-                _ => {}
             }
             i += 1;
         }

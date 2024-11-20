@@ -1,7 +1,7 @@
+use super::UnminifyPass;
 use oxc_ast::ast::{Expression, Statement, UnaryOperator};
 use oxc_span::SPAN;
 use oxc_traverse::{Traverse, TraverseCtx};
-use super::UnminifyPass;
 
 pub struct UnReturn {
     changed: bool,
