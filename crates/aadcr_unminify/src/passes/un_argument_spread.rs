@@ -4,6 +4,7 @@ use oxc_ast::ast::{
     Argument, BinaryExpression, BinaryOperator, Expression, IdentifierName, IdentifierReference,
     NumberBase, TSTypeParameterInstantiation, UnaryOperator,
 };
+use oxc_codegen::{Context, GenExpr};
 use oxc_span::SPAN;
 use oxc_traverse::{Ancestor, Traverse, TraverseCtx};
 
@@ -75,24 +76,28 @@ impl<'a> UnArgumentSpread {
         callee: &'b Expression<'a>,
     ) -> Option<&'b IdentifierReference<'a>> {
         match callee {
-            Expression::StaticMemberExpression(mem) => {
-                if let Expression::Identifier(ident) = &mem.object
-                    && mem.property.name == "apply"
-                {
-                    return Some(ident);
+            Expression::StaticMemberExpression(mem)
+                if matches!(&mem.object, Expression::Identifier(_))
+                    && mem.property.name == "apply" =>
+            {
+                match &mem.object {
+                    Expression::Identifier(ident) => Some(ident),
+                    _ => None,
                 }
             }
-            Expression::ComputedMemberExpression(mem) => {
-                if let Expression::Identifier(ident) = &mem.object
-                    && let Expression::Identifier(prop) = &mem.expression
-                    && prop.name == "apply"
-                {
-                    return Some(ident);
+
+            Expression::ComputedMemberExpression(mem)
+                if matches!(&mem.object, Expression::Identifier(_))
+                    && matches!(&mem.expression, Expression::Identifier(prop) if prop.name == "apply") =>
+            {
+                match &mem.object {
+                    Expression::Identifier(ident) => Some(ident),
+                    _ => None,
                 }
             }
-            _ => {}
+
+            _ => None,
         }
-        None
     }
 
     fn try_obj_apply(
@@ -100,38 +105,34 @@ impl<'a> UnArgumentSpread {
         node: &mut oxc_ast::ast::CallExpression<'a>,
         ctx: &mut TraverseCtx<'a>,
     ) {
-        match &mut node.callee {
-            Expression::StaticMemberExpression(member) => match &member.object {
-                Expression::StaticMemberExpression(member2) => {
-                    dbg!(&member2);
-                    let args = &mut node.arguments;
-                    if let Some((this_arg, arg)) = self.try_get_obj_apply_args(args) {
-                        let obj = &member2.object;
+        let member = match &mut node.callee {
+            Expression::StaticMemberExpression(member) => &mut member.object,
+            Expression::ComputedMemberExpression(member) => &mut member.object,
+            _ => return,
+        };
 
-                        match (this_arg, obj) {
-                            (Expression::Identifier(ident), Expression::Identifier(ident2)) => {
-                                if ident.name == ident2.name {
-                                    let arg = ctx.ast.argument_spread_element(
-                                        SPAN,
-                                        ctx.ast.move_expression(arg),
-                                    );
+        let obj = match &member {
+            Expression::StaticMemberExpression(member2) => &member2.object,
+            Expression::ComputedMemberExpression(member2) => &member2.object,
+            _ => return,
+        };
 
-                                    node.arguments = ctx.ast.vec1(arg);
+        let Some((this_arg, arg)) = self.try_get_obj_apply_args(&mut node.arguments) else {
+            return;
+        };
 
-                                    node.callee = ctx.ast.move_expression(&mut member.object);
-                                }
-                            }
-                            _ => {}
-                        }
-                    }
-                }
-                _ => {}
-            },
-            _ => {}
+        if !is_same_object(this_arg, obj) {
+            return;
         }
+
+        let spread_arg = ctx
+            .ast
+            .argument_spread_element(SPAN, ctx.ast.move_expression(arg));
+        node.arguments = ctx.ast.vec1(spread_arg);
+        node.callee = ctx.ast.move_expression(member);
     }
 
-    // Try to get the first and second arguments of the call expression.
+    /// Try to get the first and second arguments of the call expression.
     fn try_get_obj_apply_args<'b>(
         &self,
         args: &'b mut oxc_allocator::Vec<'a, Argument<'a>>,
@@ -146,6 +147,29 @@ impl<'a> UnArgumentSpread {
 
         Some((first, second))
     }
+}
+
+fn expr_same_variant(a: &Expression, b: &Expression) -> bool {
+    use std::mem::discriminant;
+    discriminant(a) == discriminant(b)
+}
+
+fn is_same_object(a: &Expression, b: &Expression) -> bool {
+    match (a, b) {
+        (Expression::Identifier(ident1), Expression::Identifier(ident2)) => {
+            ident1.name == ident2.name
+        }
+        _ if expr_same_variant(a, b) => print_expr(a) == print_expr(b),
+        _ => false,
+    }
+}
+
+fn print_expr(expr: &Expression) -> String {
+    use oxc_codegen::Codegen;
+
+    let mut p = Codegen::new();
+    p.print_expression(expr);
+    p.into_source_text()
 }
 
 #[cfg(test)]
@@ -196,21 +220,103 @@ fn.apply({}, someArray);
             "
 obj.fn.apply(obj, someArray);
 
-// class T {
-//   fn() {
-//     this.fn.apply(this, someArray);
-//   }
-// }
+class T {
+  fn() {
+    this.fn.apply(this, someArray);
+  }
+}
         ",
             "
 obj.fn(...someArray);
 
-// class T {
-//   fn() {
-//     this.fn(...someArray);
-//   }
-// }
+class T {
+  fn() {
+    this.fn(...someArray);
+  }
+}
 ",
         );
+    }
+
+    #[test]
+    fn test_un_argument_spread_obj_computed_fn_call() {
+        run_test(
+            "
+obj[fn].apply(obj, someArray);
+            ",
+            "
+obj[fn](...someArray);
+            ",
+        )
+    }
+
+    #[test]
+    fn test_un_argument_spread_obj_fn_call_not_transform() {
+        run_test(
+            "
+obj.fn.apply(otherObj, someArray);
+obj.fn.apply(undefined, someArray);
+obj.fn.apply(void 0, someArray);
+obj.fn.apply(null, someArray);
+obj.fn.apply(this, someArray);
+obj.fn.apply({}, someArray);
+            ",
+            "
+obj.fn.apply(otherObj, someArray);
+obj.fn.apply(undefined, someArray);
+obj.fn.apply(void 0, someArray);
+obj.fn.apply(null, someArray);
+obj.fn.apply(this, someArray);
+obj.fn.apply({}, someArray);
+            ",
+        )
+    }
+
+    #[test]
+    fn test_un_argument_spread_obj_fn_call_with_array() {
+        run_test(
+            "
+obj.fn.apply(obj, [1, 2, 3]);
+            ",
+            "
+obj.fn(...[1, 2, 3]);
+            ",
+        )
+    }
+
+    #[test]
+    fn test_un_argument_spread_obj_fn_long_this_arg() {
+        run_test(
+            "
+foo[bar+1].baz.fn.apply(foo[bar+1].baz, someArray);
+            ",
+            "
+foo[bar+1].baz.fn(...someArray);
+            ",
+        )
+    }
+
+    #[test]
+    fn test_un_argument_spread_obj_fn_literal_this_arg() {
+        run_test(
+            "
+[].fn.apply([], someArray);
+            ",
+            "
+[].fn(...someArray);
+            ",
+        )
+    }
+
+    #[test]
+    fn test_un_argument_spread_not_transform_obj_fn_literal_this_arg() {
+        run_test(
+            "
+[].fn.apply([1], someArray);
+            ",
+            "
+[].fn.apply([1], someArray);
+            ",
+        )
     }
 }
