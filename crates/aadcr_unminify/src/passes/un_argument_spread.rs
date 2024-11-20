@@ -55,11 +55,16 @@ impl<'a> UnArgumentSpread {
         &self,
         args: &'b mut oxc_allocator::Vec<'a, Argument<'a>>,
     ) -> Option<&'b mut Expression<'a>> {
-        if args.len() == 2
-            && let Some(first) = args.first().and_then(|a| a.as_expression())
-            && (first.is_null() || first.is_undefined() || first.is_void_0())
-            && let Some(second) = args.get_mut(1).and_then(|a| a.as_expression_mut())
-        {
+        if args.len() != 2 {
+            return None;
+        }
+
+        let (first, rest) = args.split_first_mut()?;
+
+        let first = first.as_expression()?;
+        let second = rest.first_mut()?.as_expression_mut()?;
+
+        if first.is_null() || first.is_undefined() || first.is_void_0() {
             return Some(second);
         }
         None
@@ -98,6 +103,7 @@ impl<'a> UnArgumentSpread {
         match &mut node.callee {
             Expression::StaticMemberExpression(member) => match &member.object {
                 Expression::StaticMemberExpression(member2) => {
+                    dbg!(&member2);
                     let args = &mut node.arguments;
                     if let Some((this_arg, arg)) = self.try_get_obj_apply_args(args) {
                         let obj = &member2.object;
@@ -125,6 +131,7 @@ impl<'a> UnArgumentSpread {
         }
     }
 
+    // Try to get the first and second arguments of the call expression.
     fn try_get_obj_apply_args<'b>(
         &self,
         args: &'b mut oxc_allocator::Vec<'a, Argument<'a>>,
@@ -188,9 +195,21 @@ fn.apply({}, someArray);
         run_test(
             "
 obj.fn.apply(obj, someArray);
+
+// class T {
+//   fn() {
+//     this.fn.apply(this, someArray);
+//   }
+// }
         ",
             "
 obj.fn(...someArray);
+
+// class T {
+//   fn() {
+//     this.fn(...someArray);
+//   }
+// }
 ",
         );
     }
