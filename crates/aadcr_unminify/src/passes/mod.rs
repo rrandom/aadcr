@@ -1,17 +1,18 @@
 use oxc_traverse::Traverse;
 
+pub mod un_argument_spread;
+pub mod un_assign_merging;
 pub mod un_boolean;
+pub mod un_flip_comparisons;
 pub mod un_infinity;
 pub mod un_numeric_literal;
+pub mod un_return;
 pub mod un_sequence_expr;
+pub mod un_type_constructor;
 pub mod un_typeof;
 pub mod un_undefined;
 pub mod un_variable_merging;
 pub mod un_while_loop;
-pub mod un_flip_comparisons;
-pub mod un_return;
-pub mod un_assign_merging;
-pub mod un_type_constructor;
 
 pub trait UnminifyPass<'a>: Traverse<'a> {
     fn changed(&self) -> bool;
