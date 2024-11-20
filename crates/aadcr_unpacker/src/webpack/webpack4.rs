@@ -33,18 +33,8 @@ pub fn get_modules_form_webpack4<'a>(
     let mut module_funs = vec![];
 
     let nodes = semantic.nodes();
-    let program_source_type = nodes
-        .root()
-        .map(|id| nodes.get_node(id).kind().as_program().unwrap().source_type);
-    let program_directives = nodes.root().map(|id| {
-        nodes
-            .get_node(id)
-            .kind()
-            .as_program()
-            .unwrap()
-            .directives
-            .clone_in(allocator)
-    });
+    let program_source_type = program.source_type;
+    let program_directives = &program.directives;
 
     for node in nodes.iter() {
         match node.kind() {
@@ -113,15 +103,11 @@ pub fn get_modules_form_webpack4<'a>(
         let fun_statement =
             ast.statement_expression(fun.span, ast.expression_from_function(new_fun));
 
-        let directives = program_directives
-            .clone_in(allocator)
-            .unwrap_or_else(|| ast.vec());
-
         let mut program = ast.program(
             SPAN,
-            program_source_type.unwrap().clone_in(allocator),
+            program_source_type,
             None,
-            directives,
+            program_directives.clone_in(allocator),
             ast.vec1(fun_statement),
         );
         let mut fun_renamer = FunctionToProgram::new(allocator, ["module", "exports", "require"]);

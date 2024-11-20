@@ -30,21 +30,8 @@ pub fn get_modules_form_jsonp<'a>(
 
     let nodes = semantic.nodes();
 
-    let program_source_type = nodes
-        .root()
-        .map(|id| nodes.get_node(id).kind().as_program().unwrap().source_type);
-
-    let program_directives = nodes.root().map(|id| {
-        nodes
-            .get_node(id)
-            .kind()
-            .as_program()
-            .unwrap()
-            .directives
-            .clone_in(allocator)
-    });
-
-    nodes.root()?;
+    let program_source_type = program.source_type;
+    let program_directives = &program.directives;
 
     let mut module_map = IndexMap::new();
 
@@ -121,15 +108,11 @@ pub fn get_modules_form_jsonp<'a>(
     for (module_id, expr) in module_map {
         let fun_statement = ast.statement_expression(SPAN, expr.clone_in(allocator));
 
-        let directives = program_directives
-            .clone_in(allocator)
-            .unwrap_or_else(|| ast.vec());
-
         let mut program = ast.program(
             SPAN,
-            program_source_type.unwrap().clone_in(allocator),
+            program_source_type,
             None,
-            directives,
+            program_directives.clone_in(allocator),
             ast.vec1(fun_statement),
         );
 
