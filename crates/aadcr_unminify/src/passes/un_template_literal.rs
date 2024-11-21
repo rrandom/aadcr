@@ -28,31 +28,34 @@ impl UnminifyPass<'_> for UnTemplateLiteral {
 
 impl<'a> Traverse<'a> for UnTemplateLiteral {
     fn exit_expression(&mut self, node: &mut Expression<'a>, ctx: &mut TraverseCtx<'a>) {
-        if let Expression::CallExpression(call_expr) = node {
-            if let Expression::StaticMemberExpression(member_expr) = &mut call_expr.callee {
-                if matches!(
-                    member_expr.object,
-                    Expression::StringLiteral(_) | Expression::TemplateLiteral(_)
-                ) && member_expr.property.name == "concat"
-                {
-                    let quasis = ctx.ast.vec1(new_quasi(ctx, true));
-                    let exprs = ctx.ast.vec();
-                    let mut template = ctx.ast.template_literal(SPAN, quasis, exprs);
+        if let Expression::CallExpression(call_expr) = node
+            && let Expression::StaticMemberExpression(member_expr) = &mut call_expr.callee
+            && matches!(
+                member_expr.object,
+                Expression::StringLiteral(_) | Expression::TemplateLiteral(_)
+            )
+            && member_expr.property.name == "concat"
+        {
+            let mut template = create_empty_template(ctx);
 
-                    push_to_template(&mut template, &mut member_expr.object, ctx);
+            push_to_template(&mut template, &mut member_expr.object, ctx);
 
-                    for i in call_expr.arguments.iter_mut() {
-                        push_to_template(&mut template, i.as_expression_mut().unwrap(), ctx);
-                    }
-
-                    *node = ctx.ast.expression_from_template_literal(template);
-                }
+            for i in call_expr.arguments.iter_mut() {
+                push_to_template(&mut template, i.as_expression_mut().unwrap(), ctx);
             }
+
+            *node = ctx.ast.expression_from_template_literal(template);
         }
     }
 }
 
-fn new_quasi<'a>(ctx: &mut TraverseCtx<'a>, tail: bool) -> TemplateElement<'a> {
+fn create_empty_template<'a>(ctx: &mut TraverseCtx<'a>) -> TemplateLiteral<'a> {
+    let quasis = ctx.ast.vec1(create_empty_quasi(ctx, true));
+    let exprs = ctx.ast.vec();
+    ctx.ast.template_literal(SPAN, quasis, exprs)
+}
+
+fn create_empty_quasi<'a>(ctx: &mut TraverseCtx<'a>, tail: bool) -> TemplateElement<'a> {
     let value = TemplateElementValue {
         raw: "".into(),
         cooked: None,
@@ -94,7 +97,7 @@ fn push_to_template<'a>(
         }
         _ => {
             template.expressions.push(ctx.ast.move_expression(expr));
-            template.quasis.push(new_quasi(ctx, false));
+            template.quasis.push(create_empty_quasi(ctx, false));
         }
     }
 }
