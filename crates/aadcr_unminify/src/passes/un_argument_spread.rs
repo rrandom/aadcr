@@ -1,7 +1,4 @@
-
-use oxc_ast::ast::{
-    Argument, Expression, IdentifierReference,
-};
+use oxc_ast::ast::{Argument, Expression, IdentifierReference};
 use oxc_span::SPAN;
 use oxc_traverse::{Traverse, TraverseCtx};
 

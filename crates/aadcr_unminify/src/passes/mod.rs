@@ -8,6 +8,7 @@ pub mod un_infinity;
 pub mod un_numeric_literal;
 pub mod un_return;
 pub mod un_sequence_expr;
+pub mod un_template_literal;
 pub mod un_type_constructor;
 pub mod un_typeof;
 pub mod un_undefined;
