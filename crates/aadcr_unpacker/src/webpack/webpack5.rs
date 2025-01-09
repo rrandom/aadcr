@@ -63,18 +63,22 @@ pub fn get_modules_form_webpack5<'a>(
                         let ObjectPropertyKind::ObjectProperty(obj_prop) = prop else {
                             continue;
                         };
-                        let Some(Expression::StringLiteral(key)) = obj_prop.key.as_expression()
+
+                        let Some(module_id) = obj_prop.key.as_expression().and_then(|expr| match expr {
+                            Expression::StringLiteral(lit) => Some(lit.value.as_str()),
+                            Expression::NumericLiteral(lit) => Some(lit.raw),
+                            _ => None,
+                        })
                         else {
                             continue;
                         };
-                        let module_id = &key.value;
 
                         let expr = obj_prop.value.without_parentheses();
 
                         match expr {
                             Expression::ArrowFunctionExpression(_)
                             | Expression::FunctionExpression(_) => {
-                                module_map.insert(module_id.as_str(), expr);
+                                module_map.insert(module_id, expr);
                             }
                             _ => {
                                 continue;
